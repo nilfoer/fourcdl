@@ -1,0 +1,46 @@
+ watch clip, on copy file url, do:
+   a) print orig file name, backlinks recursively (only print! [we still might need backlinks]
+      if they contain text other than quotelinks)
+   b) copy orig file name, search backlinks recursively for src -> too hard? yes/probably
+   c) copy orig fn and print backlinks that might be src -> currently printing direct backlinks and backlinks of a 2nd lvl if the first
+       backlink contains keywords that show its a sauce request
+   d) include dl -> specify folder name after pasting thread url -> copy file url -> display origfn, backlinks etc and enter new fn -> dl
+	e) after url copy -> if next copy isnt a file url append it with _ to the filname -> dl or find intelligent way to paste into jDL
+		-> paste into clipboard -> then manually into jd
+		-> urls that just points to accs like twitter instagr tumblr etc -> isolate username
+		-> save as txt as well or use log
+	f) dl files with jDL -> save dled files posts with backlinks in txt file (name first fn 123789438.webm-123789455.webm or using date)
+		-> less space than when saving whole html but still need to look src up and when copying file need to lookup and put into fn
+	g) like e) but let jDL do the download and then rename the files
+ CURRENT: doing c) considering adding f) but (logs are basically the same thing) and d) since we can check md5 after dl and jDL doesnt in combination with e) and 4chan x user script
+ PLAN: dl with python check md5 after, use 4chan x to find src and do e) to automatically append copies after file urls that are not urls themselves to file name, additionally save posts with ALL? (sometimes src beyound 2nd lvl) backlinks as txt named with date or sth
+ make sure while printing backlinks that its visible to which post theyre linked
+ avoid spamming the console (with backlinks) when no src available or wanted
+ check orig fn -> if it only contains a uid fn or 4chan fn without a name or e.g. JAV-ID (SDDE-456) dont copy/print it
+ src might be:
+   - http link
+   - http link thats broken by spaces (some banned on 4ch or to counter bots)
+   - name, with spaces, underscores, dashes or as one e.g. miamalkova
+   - jav-id e.g. SDDE-456
+ 
+___________________________________________________ 
+sanitize windows filename:
+keepcharacters = (' ','.','_')
+"".join(c for c in filename if c.isalnum() or c in keepcharacters).rstrip()
+___________________________________________________
+
+dl_list = watch_for_file_urls(thread)
+    except Exception as e:
+        # TODO above doesnt return dl_list so this is useless -> figure out way to properly save sate on exit
+        # crash here -> this one thread exported but reraised -> outer scope all previous threads will be exported
+        # but not this one since it hasnt been returned yet -> do everythin with thread dict using to_download val
+        # one main entry point that exports state on crash?
+        # or create custom exception and use state as exception info that gets appenden from scope to scope? if possible?
+		# or use global var?
+                # not need if i have one var with a mutable type (dict) in main that/or sth thats 
+                # contained inside it gets passed along to other funs and they just modify it
+                # save that var on crash
+        # i dont rly need dl_list since im setting to_download and dl_filename in mutable dict thats contained inside thread dict
+        # export_state([(thread, dl_list)])
+        # instead of using raise UnexpectedCrash from e (gets rid of traceback) use with_traceback
+        raise UnexpectedCrash("process_4ch_thread", thread).with_traceback(e.__traceback__)
