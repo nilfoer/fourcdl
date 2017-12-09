@@ -228,7 +228,9 @@ def get_post_msg(post):
     # and i probably wont need them in a separate form ill leave it like this
     # dont count cross-thread quotes
     # ex. quotelink: #p11684379, cross-thread quotelink /gif/thread/11673913#p11673913
-    quotes = tuple((a["href"].split("#p")[1] for a in post_msg.select("a.quotelink") if "thread" not in a["href"]))
+    # other weird stuff
+    # <a href="//boards.4chan.org/t/#s=umblr" class="quotelink">&gt;&gt;&gt;/t/umblr</a>
+    quotes = tuple((a["href"].split("#p")[1] for a in post_msg.select("a.quotelink") if a["href"].startswith("#")))
     # NOT removing quotes anymore
     # remove quotes from msg when line starts with ">>", greentext is one ">"
     # regex more secure? r"\>\>\d+ ?(\(OP\))?\n?"
@@ -489,7 +491,7 @@ def watch_for_file_urls(thread, prev_dl_list=None):
                             # set dl_filename, append orig fn
                             thread[u]["file_info"]["dl_filename"]= f"{thread[u]['file_info']['file_name_4ch']}_{thread[u]['file_info']['file_name_orig']}"
 
-                return all_file_urls_thread
+                    return all_file_urls_thread
             print("Stopped watching clipboard for 4chan file urls!")
             running = False
         # must be executed if the try clause does not raise an exception
@@ -520,15 +522,26 @@ def watch_for_file_urls(thread, prev_dl_list=None):
                 else:
                     print(f"SKIPPED: File of url \"{file_url}\" was already added to the list!")
 
+            elif recent_value == "rename_thread":
+                # option to set new folder name when rename_thread is copied
+                folder_name = input("Input new folder name:\n")
+                thread["OP"]["folder_name"] = folder_name
+                print(f"Renamed thread folder to {folder_name}")
+                
             elif file_post_dict:
                 # sanitize filename for windows, src: https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string by wallyck
                 # if after for..in is part of comprehension syntax <-> if..else b4 for..in is pythons equivalent of ternary operator
                 # only keep chars if theyre alphanumerical (a-zA-Z0-9) or in the tuple (' ', '_'), replace rest with _
-                sanitized_clip = sanitize_fn(recent_value)
+                # reset file name to 4ch name when reset_filename is copied
+                if recent_value == "reset_filename":
+                    file_post_dict["file_info"]["dl_filename"]= file_post_dict['file_info']['file_name_4ch']
+                    print("Filename has been reset!")
+                else:
+                    sanitized_clip = sanitize_fn(recent_value)
 
-                dl_filename = f"{file_post_dict['file_info']['dl_filename']}_{sanitized_clip}"
-                file_post_dict["file_info"]["dl_filename"] = dl_filename
-                print(f"Not a file url -> clipboard was appended to filename: \"{dl_filename}\"")
+                    dl_filename = f"{file_post_dict['file_info']['dl_filename']}_{sanitized_clip}"
+                    file_post_dict["file_info"]["dl_filename"] = dl_filename
+                    print(f"Not a file url -> clipboard was appended to filename: \"{dl_filename}\"")
 
     # since were working on thread directly and its a mutable type(dict) we dont have
     # to return (but mb more readable)
