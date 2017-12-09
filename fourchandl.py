@@ -514,8 +514,6 @@ def watch_for_file_urls(thread, prev_dl_list=None):
                     else:
                         # append file_url (without http part) of file post to dl list and set to_download
                         dl_list.append(file_url)
-                        if recent_value == "http://i.4cdn.org/gif/1512546125986.webm":
-                            assert False  # force crash
                         file_post_dict["file_info"]["to_download"] = True
                         # set dl_filename 
                         file_post_dict["file_info"]["dl_filename"]= file_post_dict['file_info']['file_name_4ch']
@@ -577,17 +575,7 @@ def process_4ch_thread(url):
     try:
         dl_list = watch_for_file_urls(thread)
     except Exception as e:
-        # TODO above doesnt return dl_list so this is useless -> figure out way to properly save sate on exit
-        # crash here -> this one thread exported but reraised -> outer scope all previous threads will be exported
-        # but not this one since it hasnt been returned yet -> do everythin with thread dict using to_download val
-        # one main entry point that exports state on crash?
-        # or create custom exception and use state as exception info that gets appenden from scope to scope? if possible?
-		# or use global var?
-                # not need if i have one var with a mutable type (dict) in main that/or sth thats 
-                # contained inside it gets passed along to other funs and they just modify it
-                # save that var on crash
         # i dont rly need dl_list since im setting to_download and dl_filename in mutable dict thats contained inside thread dict
-        # export_state([(thread, dl_list)])
         # instead of using raise UnexpectedCrash from e (gets rid of traceback) use with_traceback
         raise UnexpectedCrash("process_4ch_thread", thread, "Unexpected crash while processing 4ch thread! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
     return thread, dl_list
@@ -733,14 +721,17 @@ def watch_clip_for_4ch_threads():
         print("Stopped watching clipboard!")
     except Exception:
         # wont be able to add any info since we crashed while info was still in ClipWatcher
-        # just reraise
+        # just reraise so we can handle in outermost scope
         raise
 
 
     for thread, dl_list in to_dl:
-        # only start dl if file urls were copied from clipboard
-        if dl_list:
-            download_thread(thread, dl_list)
+        try:
+            # only start dl if file urls were copied from clipboard
+            if dl_list:
+                download_thread(thread, dl_list)
+        except Exception as e:
+            raise UnexpectedCrash("watch_clip_for_4ch_threads", to_dl, "Unexpected crash while downloading multiple 4ch threads! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
 
 
 def read_from_file(file_path):
@@ -781,12 +772,13 @@ def resume_from_state(state_list):
             download_thread(thread, dl_list, overwrite=True)
 
 
-def resume_from_state(state_list):
+def resume_from_state_dict(state_dict):
     watch_or_dl = input("Found crashed state! (1) Resume watching for file urls for last thread or (2) start downloading thread(s)?\n")
-    # three keys in state dict 
+    # four possible keys in state dict 
     # "download_thread" contains one/or only alrdy processed thread
-    # "ClipboardWatcher" contains alrdy processed threads and dl_lists, #
-    # "process_4ch_thread" contains latest thread, no dl_list since it crashed b4 returning it
+    # "ClipboardWatcher" contains alrdy processed threads and dl_lists, crashed while process_4ch_thread so while watch_for_file_urls
+    # "process_4ch_thread" contains latest thread, no dl_list since it crashed while watching for urls b4 returning it
+    # "watch_clip_for_4ch_threads" contains one/multiple already processed threads and dl_lists, saved cause crashed while downloading
     if watch_or_dl == "1":
         # unpack last thread-dl_list pair
         last_thread, last_dl_list = state_list[-1]

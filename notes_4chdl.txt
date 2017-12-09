@@ -29,8 +29,6 @@ keepcharacters = (' ','.','_')
 "".join(c for c in filename if c.isalnum() or c in keepcharacters).rstrip()
 ___________________________________________________
 
-dl_list = watch_for_file_urls(thread)
-    except Exception as e:
         # TODO above doesnt return dl_list so this is useless -> figure out way to properly save sate on exit
         # crash here -> this one thread exported but reraised -> outer scope all previous threads will be exported
         # but not this one since it hasnt been returned yet -> do everythin with thread dict using to_download val
@@ -43,4 +41,4 @@ dl_list = watch_for_file_urls(thread)
         # i dont rly need dl_list since im setting to_download and dl_filename in mutable dict thats contained inside thread dict
         # export_state([(thread, dl_list)])
         # instead of using raise UnexpectedCrash from e (gets rid of traceback) use with_traceback
-        raise UnexpectedCrash("process_4ch_thread", thread).with_traceback(e.__traceback__)
+        raise UnexpectedCrash("process_4ch_thread", thread, "Unexpected crash while processing 4ch thread! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
