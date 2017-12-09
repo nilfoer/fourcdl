@@ -268,7 +268,7 @@ def get_thread_from_html(html):
     thread_nr, subj, op_msg, thread_utc = get_op(soup)
     logger.info("Viewing thread \"%s\" No. %s. OP:\n%s", subj, thread_nr, op_msg)
     folder_name = input("Input the folder name the thread is going to be downloaded to "
-            "(e.g. \"gif_cute\"):\n")
+            "(e.g. \"gif_cute\", subfolders work too \"gif_model/Emily Rudd\"):\n")
     # write OP entry
     thread["OP"] = {"thread_nr": thread_nr, "subject": subj, "op_post_msg": op_msg, "utc": thread_utc, "folder_name": folder_name}
     for post in posts:
@@ -413,7 +413,7 @@ def build_export_str(thread, dl_list):
     return "\n".join(exp_str_lines)
 
 
-def append_to_md5_file(thread, dl_list, thread_folder, thread_folder_name):
+def append_to_md5_file(thread, dl_list, thread_folder, sanitized_folder_name):
     final_str_ln = []
     for url in dl_list:
         md5hex = convert_b64str_to_hex(thread[url]["file_info"]["file_md5_b64"])
@@ -421,8 +421,8 @@ def append_to_md5_file(thread, dl_list, thread_folder, thread_folder_name):
     # The first (normpath) strips off any trailing slashes, the second (basename) gives you the last part of the path. 
     # Using only basename gives everything after the last slash, which could be ''
     # md5_path = os.path.join(thread_folder, f"{os.path.basename(os.path.normpath(thread_folder)}.md5")
-    md5_path = os.path.join(thread_folder, f"{thread_folder_name}.md5")
-    logger.info("Appending md5s to \"%s.md5\"", thread_folder_name)
+    md5_path = os.path.join(thread_folder, f"{sanitized_folder_name}.md5")
+    logger.info("Appending md5s to \"%s.md5\"", sanitized_folder_name)
     with open(md5_path, "a", encoding="UTF-8") as f:
         # add newline so next append starts on new line
         f.write("\n".join(final_str_ln) + "\n")
@@ -524,7 +524,7 @@ def watch_for_file_urls(thread, prev_dl_list=None):
                 # sanitize filename for windows, src: https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string by wallyck
                 # if after for..in is part of comprehension syntax <-> if..else b4 for..in is pythons equivalent of ternary operator
                 # only keep chars if theyre alphanumerical (a-zA-Z0-9) or in the tuple (' ', '_'), replace rest with _
-                sanitized_clip = "".join(c if c.isalnum() or c in (' ', '_', "-", "(", ")") else "_" for c in recent_value).strip()
+                sanitized_clip = sanitize_fn(recent_value)
 
                 dl_filename = f"{file_post_dict['file_info']['dl_filename']}_{sanitized_clip}"
                 file_post_dict["file_info"]["dl_filename"] = dl_filename
@@ -534,6 +534,10 @@ def watch_for_file_urls(thread, prev_dl_list=None):
     # to return (but mb more readable)
     # create set to remove duplicates, back to list -> json serializable
     return list(set(dl_list))
+
+
+def sanitize_fn(name):
+    return "".join(c if c.isalnum() or c in (' ', '_', "-", "(", ")") else "_" for c in name).strip()
 
 
 def watch_for_file_urls_cw(thread):
@@ -675,12 +679,16 @@ def download_thread(thread, dl_list, overwrite=False):
 
     # build exp str and append (so we dont overwrite) to txt file
     exp_str = build_export_str(thread, success_dl)
-    exp_txt_filename = f"{thread_folder_name}_{time.strftime('%Y-%m-%d')}.txt"
+    # sanitize thread_folder_name so it wont throw an exception when it includes a subdir
+    # e.g. gif_model/Emily Rudd_TIME.txt -> tries to write to Emily Rudd_TIME.txt in subfolder gif_model of folder gif_model
+    sanitized_folder_name = sanitize_fn(thread_folder_name)
+
+    exp_txt_filename = f"{sanitized_folder_name}_{time.strftime('%Y-%m-%d')}.txt"
     logger.info("Writing thread export file \"%s\"", exp_txt_filename)
     append_to_file(exp_str, os.path.join(thread_folder, exp_txt_filename))
 
     # append md5 of downloaded files to md5 file named thread_folder_name.md5
-    append_to_md5_file(thread, success_dl, thread_folder, thread_folder_name)
+    append_to_md5_file(thread, success_dl, thread_folder, sanitized_folder_name)
 
 
 def check_dl_file_crc(thread, success_dl, thread_folder, thread_folder_name):
