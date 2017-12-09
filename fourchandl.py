@@ -816,16 +816,22 @@ def resume_from_state_dict(state_dict):
         # last item in this list isnt actually the thread we working on b4 the crash
         to_dl = state_dict["ClipboardWatcher"]
 
-        last_thread = state_dict["process_4ch_thread"]
-        # no dl_list saved use to_download vals to recreate it
-        # multiple if statements (and for..in allowed in comprehension) -> stack them after each other
-        last_dl_list = recreate_dl_list(last_thread)
+        try:
+            last_thread = state_dict["process_4ch_thread"]
+        except KeyError:
+            # crashed b4 starting process_4ch_thread
+            pass
+        else:
+            # no dl_list saved use to_download vals to recreate it
+            # multiple if statements (and for..in allowed in comprehension) -> stack them after each other
+            last_dl_list = recreate_dl_list(last_thread)
 
-        logger.info("Start watching for 4ch_file_urls for latest thread \"%s\" -> will be downloaded with the previously processed threads afterwards!", last_thread["OP"]["thread_nr"])
-        # dont try to raise UnexpectedCrash here unless we just supply to_dl again for crash point "ClipboardWatcher" -> few copies we have to do again dont matter?
-        last_dl_list = watch_for_file_urls(last_thread, prev_dl_list=last_dl_list)
-        to_dl.append((last_thread, last_dl_list))
+            logger.info("Start watching for 4ch_file_urls for latest thread \"%s\" -> will be downloaded with the previously processed threads afterwards!", last_thread["OP"]["thread_nr"])
+            # dont try to raise UnexpectedCrash here unless we just supply to_dl again for crash point "ClipboardWatcher" -> few copies we have to do again dont matter?
+            last_dl_list = watch_for_file_urls(last_thread, prev_dl_list=last_dl_list)
+            to_dl.append((last_thread, last_dl_list))
 
+        logger.info("Continuing with download of multiple threads!")
         # here we can reraise due to successful thread dls
         try:
             # nothing was downloaded b4 crash
