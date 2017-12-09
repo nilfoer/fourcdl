@@ -107,8 +107,7 @@ class ClipboardWatcher:
                                 try:
                                     self._found.append(self._callback(recent_value))  # , self._txtpath)
                                 except Exception as e:
-                                    conv_state_list = [(thread, list(dl_list)) for thread, dl_list in self._found]
-                                    raise UnexpectedCrash("ClipboardWatcher", conv_state_list, "Unexpected crash while watching clipboard and appending! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
+                                    raise UnexpectedCrash("ClipboardWatcher", self._found, "Unexpected crash while watching clipboard and appending! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
 
                 time.sleep(self._pause)
 
@@ -490,7 +489,7 @@ def watch_for_file_urls(thread, prev_dl_list=None):
                             # set dl_filename, append orig fn
                             thread[u]["file_info"]["dl_filename"]= f"{thread[u]['file_info']['file_name_4ch']}_{thread[u]['file_info']['file_name_orig']}"
 
-                return set(all_file_urls_thread)  # convert so its same type
+                return all_file_urls_thread
             print("Stopped watching clipboard for 4chan file urls!")
             running = False
         # must be executed if the try clause does not raise an exception
@@ -533,8 +532,8 @@ def watch_for_file_urls(thread, prev_dl_list=None):
 
     # since were working on thread directly and its a mutable type(dict) we dont have
     # to return (but mb more readable)
-    # create set to remove duplicates
-    return set(dl_list)
+    # create set to remove duplicates, back to list -> json serializable
+    return list(set(dl_list))
 
 
 def watch_for_file_urls_cw(thread):
@@ -667,11 +666,9 @@ def download_thread(thread, dl_list, overwrite=False):
                 if download(furl, dl_path):
                     success_dl.append(url)
             except Exception as e:
-                # export_state([(thread, dl_list)])
-                # convert set to list here directly (json serializable)
-                raise UnexpectedCrash("download_thread", (thread, list(dl_list)), "Unecpected crash while downloading! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
+                raise UnexpectedCrash("download_thread", (thread, dl_list), "Unecpected crash while downloading! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
         else:
-            logger.warning("File already exists, url \"%s\" has been skipped!", furl)
+            logger.warning("File already exists, url \"%s\" has been skipped!", url)
         cur_nr += 1
 
     check_dl_file_crc(thread, success_dl, thread_folder, thread_folder_name)
@@ -724,14 +721,10 @@ def watch_clip_for_4ch_threads():
         # just reraise so we can handle in outermost scope
         raise
 
-
-    for thread, dl_list in to_dl:
-        try:
-            # only start dl if file urls were copied from clipboard
-            if dl_list:
-                download_thread(thread, dl_list)
-        except Exception as e:
-            raise UnexpectedCrash("watch_clip_for_4ch_threads", to_dl, "Unexpected crash while downloading multiple 4ch threads! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
+    try:
+        dl_multiple_threads(to_dl)
+    except Exception:
+        raise
 
 
 def read_from_file(file_path):
@@ -739,13 +732,6 @@ def read_from_file(file_path):
         contents = f.read()
     return contents
     
-
-def export_state(state_list):
-    # convert set to list, since set is not json serializable
-    conv_state_list = [(thread, list(dl_list)) for thread, dl_list in state_list]
-    json_exp_str = json.dumps(conv_state_list)
-    write_to_file(json_exp_str, "crash-exp.json")
-
 
 def export_state_from_dict(program_state):
     # readability indent=4, sort_keys=True
@@ -760,37 +746,120 @@ def import_state():
     return state
 
 
-def resume_from_state(state_list):
-    watch_or_dl = input("Found crashed state! (1) Resume watching for file urls for last thread or (2) start downloading thread(s)?\n")
-    if watch_or_dl == "1":
-        # unpack last thread-dl_list pair
-        last_thread, last_dl_list = state_list[-1]
-        last_dl_list = watch_for_file_urls(last_thread, prev_dl_list=last_dl_list)
-    for thread, dl_list in state_list:
-        if dl_list:
-            # overwrite since files might be corrupt from crash
-            download_thread(thread, dl_list, overwrite=True)
+# Default parameter values are evaluated when the function definition is executed. This means that the expression is evaluated once, when the function is defined, and that same “pre-computed” value is used for each call. This is especially important to understand when a default parameter is a mutable object, such as a list or a dictionary: if the function modifies the object (e.g. by appending an item to a list), the default value is in effect modified.
+# Lists are a mutable objects; you can change their contents. The correct way to get a default list (or dictionary, or set) is to create it at run time instead, inside the function
+# dont use test(a, b=[]) since all funcs calls will use the same list do it like below
+def dl_multiple_threads(to_dl, successful_dl_threads=None, overwrite=False):
+    if successful_dl_threads is None:
+        successful_dl_threads = []
+
+    for thread, dl_list in to_dl:
+        # only dl if it wasnt downloaded successfuly b4 crash
+        # could also use set functionality and build the difference? but this is fine since there wont be more >5 threads
+        if thread["OP"]["thread_nr"] not in successful_dl_threads:
+            try:
+                # only start dl if file urls were copied from clipboard
+                if dl_list:
+                    download_thread(thread, dl_list, overwrite=overwrite)
+                    successful_dl_threads.append(thread["OP"]["thread_nr"])
+            except Exception as e:
+                    raise UnexpectedCrash("dl_multiple_threads", (to_dl, successful_dl_threads), "Unexpected crash while downloading multiple 4ch threads! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
 
 
 def resume_from_state_dict(state_dict):
-    watch_or_dl = input("Found crashed state! (1) Resume watching for file urls for last thread or (2) start downloading thread(s)?\n")
+    # TODO copy inline comments into docstr
     # four possible keys in state dict 
     # "download_thread" contains one/or only alrdy processed thread
     # "ClipboardWatcher" contains alrdy processed threads and dl_lists, crashed while process_4ch_thread so while watch_for_file_urls
     # "process_4ch_thread" contains latest thread, no dl_list since it crashed while watching for urls b4 returning it
-    # "watch_clip_for_4ch_threads" contains one/multiple already processed threads and dl_lists, saved cause crashed while downloading
-    if watch_or_dl == "1":
-        # unpack last thread-dl_list pair
-        last_thread, last_dl_list = state_list[-1]
+    # "dl_multiple_threads" contains one/multiple already processed threads and dl_lists, saved cause crashed while downloading
+
+    # be CAREFUL where we raise UnexpectedCrash or reraise since that (or reraising UnexpectedCrash)
+    # will lead to crash-exp.json to be overwritten and we might have crashed again b4 being done
+    # wont be bad if we still collect all the necessary info
+    # not raising UnexpectedCrash or not reraising UnexpectedCrash -> wont make it to outer scope where export state would be called -> nothing happens
+    keys = state_dict.keys()
+    if "dl_multiple_threads" in keys:
+        # crashed while downloading multiple threads, all fns and dl_lists alrdy created -> error has to be fixed manually in code/json, supply alrdy successfuly download threads b4 crash as optional argument so they wont get downloaded again (-> duplicates in exp txt and md5)
+        logger.info("Continuing with download of multiple threads!")
+        to_dl, successful_dl_threads = state_dict["dl_multiple_threads"]
+        # reraise here since we might have succesfully downloaded a thread
+        try:
+            # overwrite old since they might be corrupt
+            dl_multiple_threads(to_dl, successful_dl_threads, overwrite=True)
+        except Exception:
+            raise
+
+    elif "ClipboardWatcher" in keys:
+        # was inside watch_clip_for_4ch_threads b4 crash -> continue with watching for urls for latest thrad (use key "process_4ch_thread") then dl all
+        # last item in this list isnt actually the thread we working on b4 the crash
+        to_dl = state_dict["ClipboardWatcher"]
+
+        last_thread = state_dict["process_4ch_thread"]
+        # no dl_list saved use to_download vals to recreate it
+        # multiple if statements (and for..in allowed in comprehension) -> stack them after each other
+        last_dl_list = recreate_dl_list(last_thread)
+
+        logger.info("Start watching for 4ch_file_urls for latest thread \"%s\" -> will be downloaded with the previously processed threads afterwards!", last_thread["OP"]["thread_nr"])
+        # dont try to raise UnexpectedCrash here unless we just supply to_dl again for crash point "ClipboardWatcher" -> few copies we have to do again dont matter?
         last_dl_list = watch_for_file_urls(last_thread, prev_dl_list=last_dl_list)
-    for thread, dl_list in state_list:
-        if dl_list:
-            # overwrite since files might be corrupt from crash
-            download_thread(thread, dl_list, overwrite=True)
+        to_dl.append((last_thread, last_dl_list))
+
+        # here we can reraise due to successful thread dls
+        try:
+            # nothing was downloaded b4 crash
+            dl_multiple_threads(to_dl)
+        except Exception:
+            raise
+
+    elif "process_4ch_thread" in keys:
+        # 1) single option -> continue with watch file urls
+        # 2) as callback in ClipboardWatcher: "ClipboardWatcher"->true, a) continue to watch for file urls for thread(latest) then dl latest+rest from ClipboardWatcher or b) dl(latest) + rest right away
+        # 2) alrdy account for when reaching this point (cause of elif "ClipboardWatcher"..)
+
+        last_thread = state_dict["process_4ch_thread"]
+
+        logger.info("Found single thread with no dl_list -> recreating it and starting to watch for 4ch_file_urls again!")
+        # no dl_list saved use to_download vals to recreate it
+        # multiple if statements (and for..in allowed in comprehension) -> stack them after each other
+        last_dl_list = recreate_dl_list(last_thread)
+        # dont reraise here
+        last_dl_list = watch_for_file_urls(last_thread, prev_dl_list=last_dl_list)
+
+        # just single thread need to reraise since dl_list complete and we land in "download_thread" next resume -> tested OK
+        try:
+            # nothing dled b4 crash
+            download_thread(last_thread, last_dl_list)
+        except Exception:
+            raise
+
+    elif "download_thread" in keys:
+        # 1) single opt: probably fix error manually -> re-dl
+        # 2) from dl_multiple_threads: also have to fix error -> re-dl with rest
+        # 2) alrdy accounted for cause of elif "dl_multiple_threads"..
+        thread, dl_list = state_dict["download_thread"]
+
+        logger.info("Found failed download -> trying to re-download, old files will be overwritten!")
+        # no need to reraise since well just land here again with the same info anyways
+        # ovewrite since file dled b4/at crash might be corrupt
+        download_thread(thread, dl_list, overwrite=True)
+
+
+def recreate_dl_list(thread):
+    result = []
+    for k, post_dict in thread.items():
+        if "//" in k:
+            try:
+                if post_dict["file_info"]["to_download"]:
+                    result.append(post_dict["file_info"]["file_url"])
+            except KeyError:
+                pass
+
+    return result
 
 
 class UnexpectedCrash(Exception):
-    # have dict as class vare shared over all instances so we can access dict with all info
+    # have dict as class var shared over all instances so we can access dict with all info
     # in outermost scope
     program_state = {}
 
@@ -828,16 +897,14 @@ def main():
             raise
     elif cmd_line_arg1 == "resume":
         state = import_state()
-        import pprint
-        pprint.pprint(state)
-        # try:
-        #     resume_from_state(state_list)
-        # except UnexpectedCrash as e:
-        #     export_state_from_dict(e.program_state)
-        #     raise
+        # we just catch UnexpectedCrash here and then export state so resume_from_state_dict
+        # handles when UnexpectedCrash gets raised or reraised to here (have to be careful since we might overwrite old state export that wasnt properly downloaded yet)
+        try:
+            resume_from_state_dict(state)
+        except UnexpectedCrash as e:
+            export_state_from_dict(e.program_state)
+            raise
 
-
-# TODO 
 
 if __name__ == "__main__":
     main()
