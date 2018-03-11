@@ -1,3 +1,24 @@
+4chan x (user script/extension) is really useful (if not sorting the files my script isnt even needed)
+
+to display 4ch fn with link and orig at end of file info without link:
+Advanced -> File Info Formatting
+%T %d (%p%s, %r%g) Orig: %N
+
+even better -> display orig without link first and then at end of file info link with 4ch fn
+%N %d (%p%s, %r%g) 4ch: %T
+
+Link: %l (truncated), %L (untruncated), %T (4chan filename)
+Filename: %n (truncated), %N (untruncated), %t (4chan filename)
+Download button: %d
+Quick filter MD5: %f
+Spoiler indicator: %p
+Size: %B (Bytes), %K (KB), %M (MB), %s (4chan default)
+Resolution: %r (Displays 'PDF' for PDF files)
+Tag: %g
+Literal %: %%
+
+___________________________________________________
+
  watch clip, on copy file url, do:
    a) print orig file name, backlinks recursively (only print! [we still might need backlinks]
       if they contain text other than quotelinks)
