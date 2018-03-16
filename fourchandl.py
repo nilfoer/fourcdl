@@ -691,7 +691,18 @@ def download(url, dl_path):
         return True
 
 
-def download_thread(thread, dl_list, overwrite=False):
+def cli_yes_no(question_str):
+    ans = input(f"{question_str} y/n:\n")
+    while True:
+        if ans == "n":
+            return False
+        elif ans == "y":
+            return True
+        else:
+            ans = input(f"\"{ans}\" was not a valid answer, type in \"y\" or \"n\":\n")
+
+
+def download_thread(thread, dl_list, overwrite=False, retries=1):
     # keep list of successful dls so we only export those in export str
     success_dl = []
     logger.info("Downloading thread No. %s: \"%s\"", thread["OP"]["thread_nr"], thread["OP"]["subject"])
@@ -699,24 +710,42 @@ def download_thread(thread, dl_list, overwrite=False):
     thread_folder = os.path.join(ROOTDIR, thread_folder_name)
     nr_files_thread = len(dl_list)
     cur_nr = 1
+    failed_md5 = []
     for url in dl_list:
         dl_path = os.path.join(thread_folder, f"{thread[url]['file_info']['dl_filename']}.{thread[url]['file_info']['file_ext']}")
-        if not os.path.exists(dl_path) or overwrite:
+        if not os.path.isfile(dl_path) or overwrite:
             # add https part to url, since both http and https work: https is obv. preferred
             # but continue to use url without https? as keys in success_dl list etc.
             furl = f"https:{url}"
             logger.info("Downloading: \"%s\", File %s of %s", furl, cur_nr, nr_files_thread)
             # print(f"Downloading: {url}..., File {cur_nr} of {nr_files_thread}")
             try:
-                if download(furl, dl_path):
-                    success_dl.append(url)
+                md5_match = None
+                n = 0
+                while (md5_match is None or n <= retries) and md5_match is not True:
+                    if md5_match is not None:
+                        logger.warning("Download failed: either md5 didnt match or there were connection problems! -> Retrying!")
+
+                    if download(furl, dl_path):
+                        md5_match = check_4chfile_crc(thread[url]["file_info"], thread_folder)
+                    n += 1
+                if not md5_match:
+                    failed_md5.append(url)
+                # we even keep files with failed md5 -> user hast to check them manually first if theyre worth keeping or useless
+                success_dl.append(url)
             except Exception as e:
                 raise UnexpectedCrash("download_thread", (thread, dl_list), "Unecpected crash while downloading! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
         else:
             logger.warning("File already exists, url \"%s\" has been skipped!", url)
         cur_nr += 1
 
-    check_dl_file_crc(thread, success_dl, thread_folder, thread_folder_name)
+    if failed_md5:
+        thread["failed_md5"] = failed_md5
+        logger.warning("There were the following files with failed CRC-Checks in Thread No. %s: \"%s\"\n%s",
+                       thread["OP"]["thread_nr"], thread["OP"]["subject"], "\n".join(thread["failed_md5"]))
+    else:
+        logger.info("CRC-Check successful!")
+
 
     # build exp str and append (so we dont overwrite) to txt file
     exp_str = build_export_str(thread, success_dl)
@@ -731,8 +760,21 @@ def download_thread(thread, dl_list, overwrite=False):
     # append md5 of downloaded files to md5 file in cwd (old: named thread_folder_name.md5)
     append_to_md5_file(thread, success_dl)  #, thread_folder, sanitized_folder_name)
 
+    return failed_md5
 
-def check_dl_file_crc(thread, success_dl, thread_folder, thread_folder_name):
+
+def check_4chfile_crc(file_dict, thread_folder):
+    fn = f"{file_dict['dl_filename']}.{file_dict['file_ext']}"
+    logger.debug("CRC-Checking file \"%s\"!", fn)
+    if check_4chan_md5(os.path.join(thread_folder, fn), file_dict['file_md5_b64']):
+        logger.debug("MD5-Check   \"%s\" OK", fn)
+        return True
+    else:
+        logger.warning("MD5-Check   \"%s\" FAILED", fn)
+        return False
+
+
+def check_thread_files_crc(thread, success_dl, thread_folder):
     logger.info("CRC-Checking files!")
     failed_md5 = []
     for url in success_dl:
@@ -748,6 +790,8 @@ def check_dl_file_crc(thread, success_dl, thread_folder, thread_folder_name):
         fmd5str = '\n'.join(failed_md5)
         write_to_file(f"Failed MD5s of Thread No. {thread['OP']['thread_nr']}:\n"
                       f"{fmd5str}", os.path.join(thread_folder, "FAILED_MD5.txt"))
+        logger.warning("The following files failed CRC-Check:\n%s", fmd5str)
+
     return failed_md5
 
 
@@ -813,6 +857,56 @@ def dl_multiple_threads(to_dl, successful_dl_threads=None, overwrite=False):
                     successful_dl_threads.append(thread["OP"]["thread_nr"])
             except Exception as e:
                     raise UnexpectedCrash("dl_multiple_threads", (to_dl, successful_dl_threads), "Unexpected crash while downloading multiple 4ch threads! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
+    # assume all are downloaded
+    for thread, _ in to_dl:
+        try:
+            user_handle_failed_md5(thread, thread["failed_md5"])
+        except KeyError:
+            continue
+
+
+def user_handle_failed_md5(thread, failed_md5):
+    with open("4chan_dl.md5", "r", encoding="UTF-8") as f:
+        root_md5_file = f.read()
+
+    # we already warned b4
+    print("Files with failed CRC that you want to keep will get their original md5 (in root md5 file) replaced "
+          "by their actual md5, but their original md5 will be stored in 'kept_failed_md5_files.md5'\n"
+          "It is recommended to check the files manually -> if the play/look ok -> keep them")
+    # cant use \ in {} of f-strings -> either use chr(10) to get \n or assign to var nl="\n" and use that or join b4hand and assign to var
+    # nested f-strings dont work somehow if they contain the usage of quotation marks
+    i_failed_names = "\n".join((f'({i}) {thread[url]["file_info"]["dl_filename"]}' for i, url in enumerate(failed_md5)))
+    keep = input(f"Type in the indexes seperated by \",\" of files to keep in Thread No. {thread['OP']['thread_nr']} "
+                 f"with failed CRC-Checks: \"{thread['OP']['subject']}\"\n{i_failed_names}\n")
+    keep = [int(i) for i in keep.split(",")]
+    kept_failed_lns = []
+    for i, url in enumerate(failed_md5):
+        file_info = thread[url]["file_info"]
+        thread_folder_name = thread["OP"]["folder_name"]
+        fn = f"{file_info['dl_filename']}.{file_info['file_ext']}"
+        orig_md5 = convert_b64str_to_hex(file_info['file_md5_b64'])
+
+        # check if we want to keep file
+        if i in keep:
+            actual_md5 = md5(os.path.join(thread_folder_name, fn))
+            # replace orig md5 in root md5 file with actual md5
+            # WARNING dont only replace orig_md5 since md5 might be in root md5 alrdy (since we dont check for dupes when downloading)
+            # -> use md5 *path instead
+            # STRING->IMMUTABLE => replace returns the new string with replaced substring -> need to reassign it
+            root_md5_file = root_md5_file.replace(f"{orig_md5} *{thread_folder_name}/{fn}", f"{actual_md5} *{thread_folder_name}/{fn}", 1)
+            kept_failed_lns.append(f"{orig_md5} *{thread_folder_name}/{fn}")
+        else:
+            logger.info("Removing \"%s\" from folder and root md5 file", fn)
+            os.remove(os.path.join(thread["OP"]["folder_name"], fn))
+            root_md5_file = root_md5_file.replace(f"{orig_md5} *{thread_folder_name}/{fn}\n", "", 1)
+
+    if kept_failed_lns:
+        append_to_file("\n".join(kept_failed_lns) + "\n", "kept_failed_md5_files.md5")
+
+    with open("4chan_dl.md5", "w", encoding="UTF-8") as w:
+        w.write(root_md5_file)
+
+
 
 
 def resume_from_state_dict(state_dict):
@@ -885,6 +979,10 @@ def resume_from_state_dict(state_dict):
         try:
             # nothing dled b4 crash
             download_thread(last_thread, last_dl_list)
+            try:
+                user_handle_failed_md5(last_thread, last_thread["failed_md5"])
+            except KeyError:
+                pass
         except Exception:
             raise
 
@@ -898,6 +996,10 @@ def resume_from_state_dict(state_dict):
         # no need to reraise since well just land here again with the same info anyways
         # ovewrite since file dled b4/at crash might be corrupt
         download_thread(thread, dl_list, overwrite=True)
+        try:
+            user_handle_failed_md5(thread, thread["failed_md5"])
+        except KeyError:
+            pass
 
 
 def recreate_dl_list(thread):
@@ -941,6 +1043,10 @@ def main():
             thread, dl_list = process_4ch_thread(cmd_line_arg1)
             if dl_list:
                 download_thread(thread, dl_list)
+            try:
+                user_handle_failed_md5(thread, thread["failed_md5"])
+            except KeyError:
+                pass
         except UnexpectedCrash as e:
             export_state_from_dict(e.program_state)
             raise
