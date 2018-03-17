@@ -50,16 +50,47 @@ keepcharacters = (' ','.','_')
 "".join(c for c in filename if c.isalnum() or c in keepcharacters).rstrip()
 ___________________________________________________
 
-        # TODO above doesnt return dl_list so this is useless -> figure out way to properly save sate on exit
-        # crash here -> this one thread exported but reraised -> outer scope all previous threads will be exported
-        # but not this one since it hasnt been returned yet -> do everythin with thread dict using to_download val
-        # one main entry point that exports state on crash?
-        # or create custom exception and use state as exception info that gets appenden from scope to scope? if possible?
-		# or use global var?
-                # not need if i have one var with a mutable type (dict) in main that/or sth thats 
-                # contained inside it gets passed along to other funs and they just modify it
-                # save that var on crash
-        # i dont rly need dl_list since im setting to_download and dl_filename in mutable dict thats contained inside thread dict
-        # export_state([(thread, dl_list)])
-        # instead of using raise UnexpectedCrash from e (gets rid of traceback) use with_traceback
-        raise UnexpectedCrash("process_4ch_thread", thread, "Unexpected crash while processing 4ch thread! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
+# TODO above doesnt return dl_list so this is useless -> figure out way to properly save sate on exit
+# crash here -> this one thread exported but reraised -> outer scope all previous threads will be exported
+# but not this one since it hasnt been returned yet -> do everythin with thread dict using to_download val
+# one main entry point that exports state on crash?
+# or create custom exception and use state as exception info that gets appenden from scope to scope? if possible?
+# or use global var?
+        # not need if i have one var with a mutable type (dict) in main that/or sth thats 
+        # contained inside it gets passed along to other funs and they just modify it
+        # save that var on crash
+# i dont rly need dl_list since im setting to_download and dl_filename in mutable dict thats contained inside thread dict
+# export_state([(thread, dl_list)])
+# instead of using raise UnexpectedCrash from e (gets rid of traceback) use with_traceback
+raise UnexpectedCrash("process_4ch_thread", thread, "Unexpected crash while processing 4ch thread! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
+
+___________________________________________________
+
+using filesize as keys to group files together to keep set sizes low when trying to check for duplicate dls?
+-> good so sets dont become too large (less chance of collision), but reduce amount of diff sizes by using
+   KB or MB and rounding
+
+    set -> implemented as hash table:
+    A hash table (with properly maintained load factor) has an average case of O(1), since the expected number of 
+    operations needed to check if an element is in the list is constant, you just need to hash the element, access 
+    the table at the desired place, check the bin, which contains all elements with the same hash value - but the 
+    expected value of such elements is a constant that depends on the load factor1
+
+    However, in the worst case, all the elements have the same hash values. This results that when needed to check if 
+    an element is in the set, it requires to traverse the entire collection (which is in one bin), which is basically 
+    a linear scan, and is O(n)
+
+    Note: The above explains Separate Chaining hash tables, but the idea is similar for Open Addressing
+    
+    (1) If the load factor is 1/2 for example, it means the probability that no elements are in the desired address is 1/2. 
+    The probability that (exactly) 1 element is in the bin is 1/4, the probability that exactly 2 elements in that bin, 
+    is 1/8,.... 
+    By summing the above, you get that the expected number of elements in the bin is 1/2 + 1/4 + 1/8 + ... <= 2
+    ___________________________________________________
+    
+    set == dict with keys only
+    Dict is O(1) for most operations, except for operations that touch all elements, such as iteration and copy (in which case, it's obviously O(n)).
+    See: http://wiki.python.org/moin/TimeComplexity
+    It has O(n) worst case, because you can always contrive a pathological example where all the keys have the same hash value.
+
+___________________________________________________

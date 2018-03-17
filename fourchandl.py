@@ -4,14 +4,15 @@ import time
 import logging
 import re
 import urllib.request
-import hashlib
-import binascii
 import json
 
 from logging.handlers import RotatingFileHandler
 
 import bs4
 import pyperclip
+
+from gen_downloaded_files_info import file_unique, import_files_info_pickle
+from crc import md5, convert_b64str_to_hex, check_4chan_md5
 
 ROOTDIR = os.path.dirname(os.path.realpath(__file__))
 # CWD = os.getcwd()
@@ -45,6 +46,16 @@ formatterstdo = logging.Formatter(
 stdohandler.setFormatter(formatterstdo)
 logger.addHandler(stdohandler)
 
+
+# normal urllib user agent is being blocked by tsumino
+# set user agent to use with urrlib
+opener = urllib.request.build_opener()
+opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:12.0) Gecko/20100101 Firefox/12.0')]
+# ...and install it globally so it can be used with urlretrieve/open
+urllib.request.install_opener(opener)
+
+
+files_info_dict = import_files_info_pickle("downloaded_files_info.pickle")
 
 class ClipboardWatcher:
     """Watches for changes in clipboard that fullfill predicate and get sent to callback
@@ -152,11 +163,8 @@ def append_to_file(wstring, file_path):
 def get_url(url):
     html = None
 
-    # normal urllib user agent is being blocked by tsumino, send normal User-Agent in headers ;old: 'User-Agent': 'Mozilla/5.0'
-    req = urllib.request.Request(url, headers={
-                                 'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:12.0) Gecko/20100101 Firefox/12.0'})
     try:
-        site = urllib.request.urlopen(req)
+        site = urllib.request.urlopen(url)
     except urllib.request.HTTPError as err:
         logger.warning("HTTP Error %s: %s: \"%s\"", err.code, err.reason, url)
     else:
@@ -470,7 +478,7 @@ def get_new_clipboard(recent):
 
 
 remove_https_re = re.compile("^https?:")
-def watch_for_file_urls(thread, prev_dl_list=None):
+def watch_for_file_urls(thread, prev_dl_list=None, unique_check=True, files_info_dict=files_info_dict):
     """Watch clip for 4chan file urls, once url is found the original filename is copied to
     clipboard and post info with backlinks and backlinks to source requests are printed
     :param thread: thread dict, post_nr and file urls as keys to post_dict"""
@@ -511,6 +519,7 @@ def watch_for_file_urls(thread, prev_dl_list=None):
             if is_4ch_file_url(recent_value):
                 # remove https?: from start of url, better to use address without http/https since the copies differ with/without 4chan x
                 file_url = re.sub(remove_https_re, "", recent_value)
+
                 # file_url alrdy processed? -> skip.. or use as possibility to rename -> to rename just get rid of this if
                 # if file_url not in dl_list:
                 # report on final filename if there was a prev file
@@ -518,6 +527,14 @@ def watch_for_file_urls(thread, prev_dl_list=None):
                     logger.info("File will be downloaded as \"%s.%s\"", file_post_dict["file_info"]["dl_filename"], file_post_dict["file_info"]["file_ext"])
                 if file_url in dl_list:
                     logger.info("File name of %s has been RESET!!!", file_url.split("/")[-1])
+
+                if unique_check:
+                    size_bytes = get_url_file_size(f"https:{file_url}")
+                    # if not unique/not alrdy dled -> alert user -> possibilty to manually remove it
+                    if not file_unique(files_info_dict, thread[file_url]["file_info"]["file_ext"], 
+                                       size_bytes, thread[file_url]["file_info"]["file_md5_b64"],
+                                       add_if_unique=True):
+                        logger.info("ALERT!! File with url %s has been downloaded before!", file_url)
 
                 try:
                     file_post_dict = thread[file_url]
@@ -625,52 +642,6 @@ def process_4ch_thread(url):
     return thread, dl_list
 
 
-def md5(fname, hex=True):
-    # construct a hash object by calling the appropriate constructor function
-    hash_md5 = hashlib.md5()
-    # open file in read-only byte-mode
-    with open(fname, "rb") as f:
-        # only read in chunks of size 4096 bytes
-        for chunk in iter(lambda: f.read(4096), b""):
-            # update it with the data by calling update() on the object
-            # as many times as you need to iteratively update the hash
-            hash_md5.update(chunk)
-    # get digest out of the object by calling digest() (or hexdigest() for hex-encoded string)
-    if hex:
-        return hash_md5.hexdigest()
-    else:
-        return hash_md5.digest()
-
-
-def check_4chan_md5(filename, md5_base64):
-    # either convert all md5 when reading posts or convert when checking file -> latter more
-    # efficient since were not downloading all files
-
-    # ch_md5_decoded = base64.b64decode(ch_md5)
-    # either use  binascii.unhexlify to Return the binary data represented by the hexadecimal string
-    # then binascii.a2b_base64(string) -> Convert a block of base64 data back to binary and return
-    # the binary data then compare the binary datas
-    # return binascii.unhexlify(md5(filname)) == binascii.a2b_base64(md5_base64)
-    # shorter: use binary output with digest() and compare to binary of converted b64 str
-    return md5(filename, hex=False) == binascii.a2b_base64(md5_base64)
-
-    # OR use base64.b64decode() -> Decode the Base64 encoded bytes-like object or ASCII string s 
-    # and return the decoded bytes and compare binary md5 (using .digest())
-    # print(base64.b16encode(base64.b64decode(ch_md5)), md5(fn, hex=False))
-
-    # also possible to convert base64 representation of md5 to bytes using binascii.a2b_base64(string)
-    # or base64.b64decode(ch_md5) and then convert to hex using binascii.hexlify(data) or 
-    # base64.b16encode BUT CAREFUL: funcs in base64 module only operate with uppercase hexadecimal 
-    # letters, whereas the functions in binascii work with either case    
-    # important to note that the output produced by the encoding functions is always a byte string.
-    # To coerce it to Unicode for output, you may need to add an extra decoding step -> .decode("ascii")
-    # print(base64.b16encode(base64.b64decode(ch_md5)).decode("ascii").lower(), md5(fn))
-    # print(binascii.hexlify(binascii.a2b_base64(ch_md5)).decode("ascii"), md5(fn))
-
-
-def convert_b64str_to_hex(b64_str):
-    return binascii.hexlify(binascii.a2b_base64(b64_str)).decode("ascii")
-    
 def download(url, dl_path):
     """
     Will download the file to dl_path, return True on success
@@ -689,6 +660,45 @@ def download(url, dl_path):
         return False
     else:
         return True
+
+
+def download_in_chunks(url, filename):
+    # urlretrieve uses block-size of 8192
+
+    # Before response.read() is called, the contents are not downloaded.
+    with urllib.request.urlopen(url) as response:
+        meta = response.info()
+        reported_file_size = int(meta["Content-Length"])
+        # by Alex Martelli
+        # Experiment a bit with various CHUNK sizes to find the "sweet spot" for your requirements
+        # CHUNK = 16 * 1024
+        file_size_dl = 0
+        chunk_size = 8192
+        with open(filename, 'wb') as w:
+            while True:
+                chunk = response.read(chunk_size)
+                if not chunk:
+                    break
+
+                # not chunk_size since the last chunk will probably not be of size chunk_size
+                file_size_dl += len(chunk)
+                w.write(chunk)
+
+    # from urlretrieve doc: urlretrieve() will raise ContentTooShortError when it detects that the amount of data available was less than the expected amount (which is the size reported by a Content-Length header). This can occur, for example, when the download is interrupted.
+    # The Content-Length is treated as a lower bound: if there’s more data to read, urlretrieve reads more data, but if less data is available, it raises the exception.
+    if file_size_dl < reported_file_size:
+        logger.warning("Downloaded file's size is samller than the reported size for "
+                       "\"%s\"", url)
+        return False
+    else:
+        return True
+
+
+def get_url_file_size(url):
+    """Returns file size in bytes that is reported in Content-Length Header"""
+    with urllib.request.urlopen(url) as response:
+        reported_file_size = int(response.info()["Content-Length"])
+    return reported_file_size
 
 
 def cli_yes_no(question_str):
@@ -720,19 +730,27 @@ def download_thread(thread, dl_list, overwrite=False, retries=1):
             logger.info("Downloading: \"%s\", File %s of %s", furl, cur_nr, nr_files_thread)
             # print(f"Downloading: {url}..., File {cur_nr} of {nr_files_thread}")
             try:
+                dl_success = None
                 md5_match = None
                 n = 0
-                while (md5_match is None or n <= retries) and md5_match is not True:
-                    if md5_match is not None:
+                # both dl_.. md5_.. None -> we didnt try dling yet or n <= retries -> were still in our range of allowed retries
+                # but keep trying till we reach retries since md5 has to match
+                while ((md5_match is None and dl_success is None) or n <= retries) and md5_match is not True:
+                    if md5_match is not None or dl_success is not None:
                         logger.warning("Download failed: either md5 didnt match or there were connection problems! -> Retrying!")
 
-                    if download(furl, dl_path):
+                    dl_success = download(furl, dl_path)
+                    if dl_success:
                         md5_match = check_4chfile_crc(thread[url]["file_info"], thread_folder)
                     n += 1
                 if not md5_match:
                     failed_md5.append(url)
-                # we even keep files with failed md5 -> user hast to check them manually first if theyre worth keeping or useless
-                success_dl.append(url)
+                if dl_success:
+                    # we even keep files with failed md5 -> user hast to check them manually first if theyre worth keeping or useless
+                    success_dl.append(url)
+                else:
+                    logger.warning("Download of %s failed after %s tries - File was skipped!", url, n)
+
             except Exception as e:
                 raise UnexpectedCrash("download_thread", (thread, dl_list), "Unecpected crash while downloading! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
         else:
