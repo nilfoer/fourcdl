@@ -409,9 +409,9 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
     running = True
     # continue with imported dl_list if present
     if prev_dl_list:
-        dl_list = prev_dl_list
+        dl_list = set(prev_dl_list)
     else:
-        dl_list = []
+        dl_list = set()
     unique_check = thread["OP"]["unique_check"]
 
     print("Watching clipboard for 4chan file urls...")
@@ -464,12 +464,14 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
                     print(f"File of url \"{file_url}\" was not found in the thread!")
                 # only proceed if file_url is in dict/thread
                 else:
-                    # append file_url (without http part) of file post to dl list and set to_download
-                    dl_list.append(file_url)
+                    # add file_url (without http part) of file post to dl list and set to_download
+                    dl_list.add(file_url)
                     file_post_dict["file_info"]["to_download"] = True
                     # set dl_filename 
                     file_post_dict["file_info"]["dl_filename"]= file_post_dict['file_info']['file_name_4ch']
-                    logger.info("Found file url of file: \"%s\"", file_url.replace("//i.4cdn.org/", ""))
+                    logger.info("Found file url of file: \"%s\" Total of %s files", 
+                            file_url.replace("//i.4cdn.org/", ""), len(dl_list))
+                    print("Orig-fn:", file_post_dict["file_info"]["file_name_orig"])
                 # else:
                 #     print(f"SKIPPED: File of url \"{file_url}\" was already added to the list!")
 
@@ -490,18 +492,14 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
                 elif recent_value == "remove_file":
                     logger.info("Removing file with filename \"%s\" from download list", file_post_dict["file_info"]["dl_filename"])
                     file_url = file_post_dict["file_info"]["file_url"]
-                    # remove only removes first item
-                    try:
-                        # keep removing until remove returns error -> no element x left
-                        while True:
-                            dl_list.remove(file_url)
-                    except ValueError:
-                        logger.debug("Removed all occurences of %s in dl_list", file_url)
+                    # remove on set raises KeyError when item not present -> discard(x) doesnt
+                    dl_list.remove(file_url)
 
                     file_post_dict["file_info"]["to_download"] = False
                     # dl_filename key only gets created once added to dls -> remove it
                     del file_post_dict["file_info"]["dl_filename"]
                     file_post_dict = None
+                    logger.info("New total file count: %s", len(dl_list))
                 else:
                     sanitized_clip = sanitize_fn(recent_value)
 
