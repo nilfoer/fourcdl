@@ -5,11 +5,10 @@ import pickle
 import collections
 import logging
 
-from crc import md5
+from fourchandl.crc import md5
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # src: https://stackoverflow.com/questions/8230315/how-to-json-serialize-sets
 # by NeilenMarais
@@ -176,7 +175,7 @@ def adjust_sizes(files_info, div, dec=0):
 
 SIZE_DIV = 1024*1024
 ROUND_DECS = 2
-def file_unique(files_info_dict, f_type, size_bytes, md5_b64, add_if_unique=True):
+def file_unique(files_info_dict, f_type, size_bytes, md5_b64, add_if_unique=False):
     size = round(size_bytes/SIZE_DIV, ROUND_DECS)
 
     try:
@@ -185,6 +184,15 @@ def file_unique(files_info_dict, f_type, size_bytes, md5_b64, add_if_unique=True
         unique = True
     if unique and add_if_unique:
         add_file_to_files_info(files_info_dict, f_type, size_bytes, md5_b64)
+    return unique
+
+
+def file_unique_converted(files_info_dict, f_type, size, md5_b64):
+    try:
+        unique = md5_b64 not in files_info_dict[f_type][size]
+    except KeyError:
+        unique = True
+
     return unique
     
     

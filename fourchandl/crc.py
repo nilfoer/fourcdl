@@ -1,5 +1,10 @@
+import os
+import logging
 import hashlib
 import binascii
+
+logger = logging.getLogger(__name__)
+
 
 def md5(fname, hex=True):
     # construct a hash object by calling the appropriate constructor function
@@ -46,3 +51,37 @@ def check_4chan_md5(filename, md5_base64):
 
 def convert_b64str_to_hex(b64_str):
     return binascii.hexlify(binascii.a2b_base64(b64_str)).decode("ascii")
+
+
+def check_4chfile_crc(file_path, md5_b64):
+    _, fn = os.path.split(file_path)
+    logger.debug("CRC-Checking file \"%s\"!", fn)
+    if check_4chan_md5(file_path, md5_b64):
+        logger.debug("MD5-Check   \"%s\" OK", fn)
+        return True
+    else:
+        logger.warning("MD5-Check   \"%s\" FAILED", fn)
+        return False
+
+
+def check_thread_files_crc(thread, success_dl, thread_folder):
+    logger.info("CRC-Checking files!")
+    failed_md5 = []
+    for url in success_dl:
+        fn = f"{thread[url]['file_info']['dl_filename']}.{thread[url]['file_info']['file_ext']}"
+        if check_4chan_md5(os.path.join(thread_folder, fn), thread[url]['file_info']['file_md5_b64']):
+            logger.debug("MD5-Check   \"%s\" OK", fn)
+        else:
+            logger.warning("MD5-Check   \"%s\" FAILED", fn)
+            failed_md5.append(url)
+    if not failed_md5:
+        logger.info("CRC-Check successful, all files match corresponding MD5s!")
+    else:
+        fmd5str = '\n'.join(failed_md5)
+        write_to_file(f"Failed MD5s of Thread No. {thread['OP']['thread_nr']}:\n"
+                      f"{fmd5str}", os.path.join(thread_folder, "FAILED_MD5.txt"))
+        logger.warning("The following files failed CRC-Check:\n%s", fmd5str)
+
+    return failed_md5
+
+

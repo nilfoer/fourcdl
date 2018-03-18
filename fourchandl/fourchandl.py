@@ -6,46 +6,19 @@ import re
 import urllib.request
 import json
 
-from logging.handlers import RotatingFileHandler
+from collections import defaultdict
 
 import bs4
 import pyperclip
 
-from gen_downloaded_files_info import file_unique, import_files_info_pickle
-from crc import md5, convert_b64str_to_hex, check_4chan_md5
+from fourchandl.logging_setup import configure_logging
+from fourchandl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, export_files_info_pickle, add_file_to_files_info
+from fourchandl.crc import md5, convert_b64str_to_hex, check_4chfile_crc
 
-ROOTDIR = os.path.dirname(os.path.realpath(__file__))
+logger = logging.getLogger(__name__)
+
+# os.path.dirname(os.path.realpath(__file__))
 # CWD = os.getcwd()
-
-logger = logging.getLogger("4chdl")
-logger.setLevel(logging.DEBUG)
-
-# create a file handler
-# handler = TimedRotatingFileHandler("gwaripper.log", "D", encoding="UTF-8", backupCount=10)
-# max 1MB and keep 5 files
-handler = RotatingFileHandler(os.path.join(ROOTDIR, "tsuinfo.log"),
-                              maxBytes=1048576, backupCount=5, encoding="UTF-8")
-handler.setLevel(logging.DEBUG)
-
-# create a logging format
-formatter = logging.Formatter(
-    "%(asctime)-15s - %(name)-9s - %(levelname)-6s - %(message)s")
-# '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-handler.setFormatter(formatter)
-
-# add the handlers to the logger
-logger.addHandler(handler)
-
-# create streamhandler
-stdohandler = logging.StreamHandler(sys.stdout)
-stdohandler.setLevel(logging.INFO)
-
-# create a logging format
-formatterstdo = logging.Formatter(
-    "%(asctime)s - %(levelname)s - %(message)s", "%H:%M:%S")
-stdohandler.setFormatter(formatterstdo)
-logger.addHandler(stdohandler)
-
 
 # normal urllib user agent is being blocked by tsumino
 # set user agent to use with urrlib
@@ -55,90 +28,9 @@ opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:12.0
 urllib.request.install_opener(opener)
 
 
-files_info_dict = import_files_info_pickle("downloaded_files_info.pickle")
-
-class ClipboardWatcher:
-    """Watches for changes in clipboard that fullfill predicate and get sent to callback
-
-    I create a subclass of threading.Thread, override the methods run and __init__ and create an instance of this class.
-    By calling watcher.start() (not run()!), you start the thread.
-    To safely stop the thread, I wait for -c (Keyboard-interrupt) and tell the thread to stop itself.
-    In the initialization of the class, you also have a parameter pause to control how long to wait between tries.
-    by Thorsten Kranz"""
-    # predicate ist bedingung ob gesuchter clip content
-    # hier beim aufruf in main funktion is_url_but_not_sgasm
-
-    def __init__(self, predicate, callback, txtpath, pause=5.):
-        self._predicate = predicate
-        if callback is None:
-                self._callback = self.add_found
-        else:
-                self._callback = callback
-        self._txtpath = txtpath
-        self._found = []
-        self._pause = pause
-        self._stopping = False
-
-    def run(self):
-        recent_value = "" 
-        while not self._stopping:
-                tmp_value = pyperclip.paste()
-                if tmp_value != recent_value:
-                        recent_value = tmp_value
-                        # if predicate is met
-                        if self._predicate(recent_value):
-                                # call callback
-                                self._callback(recent_value)  # , self._txtpath)
-                time.sleep(self._pause)
-
-    def run_single(self, prev_clip_cont):
-        # param with prev clip content to avoid matching clip content and then
-        # stopping when using run_single
-        recent_value = prev_clip_cont
-        while not self._stopping:
-                tmp_value = pyperclip.paste()
-                if tmp_value != recent_value:
-                        recent_value = tmp_value
-                        # if predicate is met
-                        if self._predicate(recent_value):
-                                # dont call callback
-                                logger.info("File url: %s", recent_value)
-                                return recent_value
-                time.sleep(self._pause)
-
-    def run_append_found(self):
-        recent_value = "" 
-        while not self._stopping:
-                tmp_value = pyperclip.paste()
-                if tmp_value != recent_value:
-                        recent_value = tmp_value
-                        # if predicate is met
-                        if self._predicate(recent_value):
-                                # call callback
-                                try:
-                                    self._found.append(self._callback(recent_value))  # , self._txtpath)
-                                except Exception as e:
-                                    raise UnexpectedCrash("ClipboardWatcher", self._found, "Unexpected crash while watching clipboard and appending! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
-
-                time.sleep(self._pause)
-
-    def add_found(self, item):
-            logger.info("Found item: %s", item)
-            self._found.append(item)
-
-    def get_found(self):
-            return self._found
-
-    def stop(self):
-            self._stopping = True
-
-    def copy_to_clip(self, value):
-           pyperclip.copy(value) 
-
-
 def write_to_file(wstring, file_path):
     """
-    Writes wstring to filename in dir ROOTDIR
+    Writes wstring to file_path
 
     :param wstring: String to write to file
     :param file_path: File path
@@ -150,7 +42,7 @@ def write_to_file(wstring, file_path):
 
 def append_to_file(wstring, file_path):
     """
-    Writes wstring to filename in dir ROOTDIR
+    Appends wstring to file_path
 
     :param wstring: String to write to file
     :param file_path: File path
@@ -287,10 +179,8 @@ def get_thread_from_html(html):
     posts = soup.select_one("div.thread").find_all("div", class_="postContainer")
     thread_nr, subj, op_msg, thread_utc = get_op(soup)
     logger.info("Viewing thread \"%s\" No. %s. OP:\n%s", subj, thread_nr, op_msg)
-    folder_name = input("Input the folder name the thread is going to be downloaded to "
-            "(e.g. \"gif_cute\", subfolders work too \"gif_model/Emily Rudd\"):\n")
     # write OP entry
-    thread["OP"] = {"thread_nr": thread_nr, "subject": subj, "op_post_msg": op_msg, "utc": thread_utc, "folder_name": folder_name}
+    thread["OP"] = {"thread_nr": thread_nr, "subject": subj, "op_post_msg": op_msg, "utc": thread_utc, "folder_name": None}
     for post in posts:
         utc, post_nr, backlinks = get_post_info(post.select_one("div.postInfo.desktop"))
         file_info = get_file_info(post)
@@ -433,7 +323,7 @@ def build_export_str(thread, dl_list):
     return "\n".join(exp_str_lines)
 
 
-def append_to_md5_file(thread, dl_list):  #, thread_folder, sanitized_folder_name):
+def append_to_md5_file(thread, dl_list, root_dir):  #, thread_folder, sanitized_folder_name):
     final_str_ln = []
     for url in dl_list:
         md5hex = convert_b64str_to_hex(thread[url]["file_info"]["file_md5_b64"])
@@ -444,7 +334,7 @@ def append_to_md5_file(thread, dl_list):  #, thread_folder, sanitized_folder_nam
     # md5_path = os.path.join(thread_folder, f"{os.path.basename(os.path.normpath(thread_folder)}.md5")
     # md5_path = os.path.join(thread_folder, f"{sanitized_folder_name}.md5")
     logger.info("Appending md5s!") # to \"%s.md5\"", sanitized_folder_name)
-    with open("4chan_dl.md5", "a", encoding="UTF-8") as f:
+    with open(os.path.join(root_dir, "4chan_dl.md5"), "a", encoding="UTF-8") as f:
         # add newline so next append starts on new line
         f.write("\n".join(final_str_ln) + "\n")
 
@@ -474,13 +364,47 @@ def get_new_clipboard(recent):
                 return tmp_value
             time.sleep(0.1)
     except KeyboardInterrupt:
-        raise # reraise exception and handle it in outer scope 
+        return None
+
+
+def convert_4chan_file_size(fsize_str):
+    result = None
+    amount, unit = fsize_str.split(" ")
+    if unit == "KB":
+       result = round(int(amount)/1024, 2)
+    elif unit == "MB":
+        result = float(amount)
+    else:
+        logger.error("Couldnt convert 4chan file size string \"%s\"", fsize_str)
+    return result
 
 
 remove_https_re = re.compile("^https?:")
-def watch_for_file_urls(thread, prev_dl_list=None, unique_check=True, files_info_dict=files_info_dict):
-    """Watch clip for 4chan file urls, once url is found the original filename is copied to
-    clipboard and post info with backlinks and backlinks to source requests are printed
+def get_all_file_urls_thread(thread, unique_check, files_info_dict):
+    if unique_check:
+        unique_only = cli_yes_no("Only downloaded unique (file donwloaded before) files?")
+    else:
+        unique_only = None
+    all_file_urls_thread = []
+    for u in thread.keys():
+        if "/" in u:
+            if unique_check and unique_only:
+                size = convert_4chan_file_size(thread[u]["file_info"]["file_size"])
+                # if not unique/not alrdy dled -> skip
+                if not file_unique_converted(files_info_dict, 
+                        thread[u]["file_info"]["file_ext"], size,
+                        thread[u]["file_info"]["file_md5_b64"]):
+                    continue
+            all_file_urls_thread.append(u)
+            thread[u]["file_info"]["to_download"] = True
+            # set dl_filename, append orig fn
+            thread[u]["file_info"]["dl_filename"]= f"{thread[u]['file_info']['file_name_4ch']}_{thread[u]['file_info']['file_name_orig']}"
+
+    return all_file_urls_thread
+
+
+def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
+    """Watch clip for 4chan file urls
     :param thread: thread dict, post_nr and file urls as keys to post_dict"""
     running = True
     # continue with imported dl_list if present
@@ -488,29 +412,23 @@ def watch_for_file_urls(thread, prev_dl_list=None, unique_check=True, files_info
         dl_list = prev_dl_list
     else:
         dl_list = []
+    unique_check = thread["OP"]["unique_check"]
 
     print("Watching clipboard for 4chan file urls...")
     recent_value = None
     file_post_dict = None
     while running:
-        try:
-            recent_value = get_new_clipboard(recent_value)
-        except KeyboardInterrupt:
+        recent_value = get_new_clipboard(recent_value)
+        if recent_value is None:
             if file_post_dict:
                 # also report final fn on interrupt
                 logger.info("File will be downloaded as \"%s.%s\"", file_post_dict["file_info"]["dl_filename"], file_post_dict["file_info"]["file_ext"])
             elif not dl_list:
                 whole = input("No file urls copied! Download all file urls in thread: y/n?\n")
-                if whole == "y":
-                    all_file_urls_thread = []
-                    for u in thread.keys():
-                        if "/" in u:
-                            all_file_urls_thread.append(u)
-                            thread[u]["file_info"]["to_download"] = True
-                            # set dl_filename, append orig fn
-                            thread[u]["file_info"]["dl_filename"]= f"{thread[u]['file_info']['file_name_4ch']}_{thread[u]['file_info']['file_name_orig']}"
 
-                    return all_file_urls_thread
+                if whole == "y":
+                    return get_all_file_urls_thread(thread, unique_check, files_info_dict)
+
             print("Stopped watching clipboard for 4chan file urls!")
             running = False
         # must be executed if the try clause does not raise an exception
@@ -528,13 +446,16 @@ def watch_for_file_urls(thread, prev_dl_list=None, unique_check=True, files_info
                 if file_url in dl_list:
                     logger.info("File name of %s has been RESET!!!", file_url.split("/")[-1])
 
+                # TODO
                 if unique_check:
-                    size_bytes = get_url_file_size(f"https:{file_url}")
+                    # cant use get_url_file_size here since it might take multiple seconds
+                    # use value available in 4chan file_info
+                    size = convert_4chan_file_size(thread[file_url]["file_info"]["file_size"])
                     # if not unique/not alrdy dled -> alert user -> possibilty to manually remove it
-                    if not file_unique(files_info_dict, thread[file_url]["file_info"]["file_ext"], 
-                                       size_bytes, thread[file_url]["file_info"]["file_md5_b64"],
-                                       add_if_unique=True):
-                        logger.info("ALERT!! File with url %s has been downloaded before!", file_url)
+                    if not file_unique_converted(files_info_dict, 
+                            thread[file_url]["file_info"]["file_ext"], size,
+                            thread[file_url]["file_info"]["file_md5_b64"]):
+                        logger.info("ALERT!! File with url %s has been downloaded before! remove_file ?", file_url)
 
                 try:
                     file_post_dict = thread[file_url]
@@ -598,43 +519,17 @@ def sanitize_fn(name):
     return "".join(c if c.isalnum() or c in (' ', '_', "-", "(", ")") else "_" for c in name).strip()
 
 
-def watch_for_file_urls_cw(thread):
-    """Watch clip for 4chan file urls, once url is found the original filename is copied to
-    clipboard and post info with backlinks and backlinks to source requests are printed
-    :param thread: thread dict, post_nr and file urls as keys to post_dict"""
-    running = True
-    watcher = ClipboardWatcher(is_4ch_file_url, None, ROOTDIR, 0.1)
-
-    print("Watching clipboard for 4chan file urls...")
-    file_url_recent = None
-    while running:
-        file_url = None
-        try:
-            # run_single returns found val matching predciate after first match
-            file_url = watcher.run_single(file_url_recent)
-        except KeyboardInterrupt:
-            watcher.stop()
-            print("Stopped watching clipboard for 4chan file urls!")
-            running = False
-        if file_url:
-            # remove https?: from start of url
-            # file_url = re.sub(remove_https_re, "", file_url)
-            post_dict = thread[file_url]
-            logger.info("Found file url of file: \"%s\"", file_url.replace("http://i.4cdn.org/", ""))
-            orig_fn = post_dict["file_info"]["file_name_orig"]
-            pyperclip.copy(orig_fn) 
-            logger.info("Copied original filename to clipboard: %s", orig_fn)
-            # print_rel_backlinks(thread, post_dict)
-            file_url_recent = file_url
-
-
-def process_4ch_thread(url):
+def process_4ch_thread(url, files_info_dict):
     html = get_url(url)
     # with open("4chtest.html", "r", encoding="UTF-8") as f:
     #     html = f.read()
     thread = get_thread_from_html(html)
+    folder_name = input("Input the folder name the thread is going to be downloaded to "
+            "(e.g. \"gif_cute\", subfolders work too \"gif_model/Emily Rudd\"):\n")
+    thread["OP"]["folder_name"] = folder_name
+    thread["OP"]["unique_check"] = cli_yes_no("Check if copied files were downloaded before?")
     try:
-        dl_list = watch_for_file_urls(thread)
+        dl_list = watch_for_file_urls(thread, files_info_dict)
     except Exception as e:
         # i dont rly need dl_list since im setting to_download and dl_filename in mutable dict thats contained inside thread dict
         # instead of using raise UnexpectedCrash from e (gets rid of traceback) use with_traceback
@@ -650,21 +545,27 @@ def download(url, dl_path):
     :param maxfnr: Max files to download
     :return: Current file nr(int)
     """
-    # get head (everythin b4 last part of path ("/" last -> tail empty, filename or dir(without /) -> tail)) of path
-    os.makedirs(os.path.split(dl_path)[0], exist_ok=True)
+    # get head (everythin b4 last part of path ("/" last -> tail empty, filename or dir(without /) -> tail)) of path; no slash in path -> head empty
+    dirpath, fn = os.path.split(dl_path)
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)
 
     try:
-        urllib.request.urlretrieve(url, dl_path)  # reporthook=prog_bar_dl)
+        _, headers = urllib.request.urlretrieve(url, dl_path)  # reporthook=prog_bar_dl)
     except urllib.request.HTTPError as err:
         logger.warning("HTTP Error {}: {}: \"{}\"".format(err.code, err.reason, url))
-        return False
+        return False, None
     else:
-        return True
+        return True, headers
 
 
 def download_in_chunks(url, filename):
-    # urlretrieve uses block-size of 8192
+    # get head (everythin b4 last part of path ("/" last -> tail empty, filename or dir(without /) -> tail)) of path; no slash in path -> head empty
+    dirpath, fn = os.path.split(filename)
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)
 
+    # urlretrieve uses block-size of 8192
     # Before response.read() is called, the contents are not downloaded.
     with urllib.request.urlopen(url) as response:
         meta = response.info()
@@ -689,9 +590,9 @@ def download_in_chunks(url, filename):
     if file_size_dl < reported_file_size:
         logger.warning("Downloaded file's size is samller than the reported size for "
                        "\"%s\"", url)
-        return False
+        return False, file_size_dl
     else:
-        return True
+        return True, file_size_dl
 
 
 def get_url_file_size(url):
@@ -712,50 +613,77 @@ def cli_yes_no(question_str):
             ans = input(f"\"{ans}\" was not a valid answer, type in \"y\" or \"n\":\n")
 
 
-def download_thread(thread, dl_list, overwrite=False, retries=1):
+def download_with_retries_crc(url, dl_path, md5_b64, retries=1):
+    dl_success = None
+    md5_match = None
+    n = 0
+    # both dl_.. md5_.. None -> we didnt try dling yet or n <= retries -> were still in our range of allowed retries
+    # but keep trying till we reach retries since md5 has to match
+    while ((md5_match is None and dl_success is None) or n <= retries) and md5_match is not True:
+        if md5_match is not None or dl_success is not None:
+            logger.warning("Download failed: either md5 didnt match or there were connection problems! -> Retrying!")
+
+        dl_success, headers = download(url, dl_path)
+        if dl_success:
+            md5_match = check_4chfile_crc(dl_path, md5_b64)
+        n += 1
+
+    return dl_success, md5_match, headers
+
+
+RETRIES = 1
+def download_4chan_file_url(url, dl_path, file_dict, files_info_dict, overwrite=False,
+        retries=RETRIES):
+    dl_success, md5_match = None, None
+
+    if not os.path.isfile(dl_path) or overwrite:
+        # add https part to url, since both http and https work: https is obv. preferred
+        # but continue to use url without https? as keys in success_dl list etc.
+        furl = f"https:{url}"
+        dl_success, md5_match, headers = download_with_retries_crc(furl, dl_path, 
+                file_dict["file_md5_b64"], retries=retries)
+
+        # WARNING only added if md5_match even if we decide to keep the file
+        # removing md5_b64 later from files_info_dict also wouldnt work since we might have downloaded
+        # that file before then removing it would be wrong
+        if dl_success and md5_match:
+            add_file_to_files_info(files_info_dict, file_dict["file_ext"], 
+                    int(headers["Content-Length"]), file_dict["file_md5_b64"])
+        else:
+            # HARDCODED
+            logger.warning("Download of %s failed after %s tries - File was skipped!", url, 
+                    retries+1)
+    else:
+        logger.warning("File already exists, url \"%s\" has been skipped!", url)
+
+    return dl_success, md5_match
+
+
+def download_thread(thread, dl_list, files_info_dict, root_dir, overwrite=False):
     # keep list of successful dls so we only export those in export str
     success_dl = []
     logger.info("Downloading thread No. %s: \"%s\"", thread["OP"]["thread_nr"], thread["OP"]["subject"])
     thread_folder_name = thread["OP"]["folder_name"]
-    thread_folder = os.path.join(ROOTDIR, thread_folder_name)
+    thread_folder = os.path.join(root_dir, thread_folder_name)
     nr_files_thread = len(dl_list)
     cur_nr = 1
     failed_md5 = []
     for url in dl_list:
-        dl_path = os.path.join(thread_folder, f"{thread[url]['file_info']['dl_filename']}.{thread[url]['file_info']['file_ext']}")
-        if not os.path.isfile(dl_path) or overwrite:
-            # add https part to url, since both http and https work: https is obv. preferred
-            # but continue to use url without https? as keys in success_dl list etc.
-            furl = f"https:{url}"
-            logger.info("Downloading: \"%s\", File %s of %s", furl, cur_nr, nr_files_thread)
-            # print(f"Downloading: {url}..., File {cur_nr} of {nr_files_thread}")
-            try:
-                dl_success = None
-                md5_match = None
-                n = 0
-                # both dl_.. md5_.. None -> we didnt try dling yet or n <= retries -> were still in our range of allowed retries
-                # but keep trying till we reach retries since md5 has to match
-                while ((md5_match is None and dl_success is None) or n <= retries) and md5_match is not True:
-                    if md5_match is not None or dl_success is not None:
-                        logger.warning("Download failed: either md5 didnt match or there were connection problems! -> Retrying!")
+        file_dict = thread[url]["file_info"]
+        dl_path = os.path.join(thread_folder, f"{file_dict['dl_filename']}.{file_dict['file_ext']}")
+        logger.info("Downloading: \"%s\", File %s of %s", url, cur_nr, nr_files_thread)
+        try:
+            dl_success, md5_match = download_4chan_file_url(url, dl_path, file_dict, files_info_dict, overwrite=overwrite)
 
-                    dl_success = download(furl, dl_path)
-                    if dl_success:
-                        md5_match = check_4chfile_crc(thread[url]["file_info"], thread_folder)
-                    n += 1
+            if dl_success:
+                # we even keep files with failed md5 -> user hast to check them manually first if theyre worth keeping or useless
+                success_dl.append(url)
                 if not md5_match:
                     failed_md5.append(url)
-                if dl_success:
-                    # we even keep files with failed md5 -> user hast to check them manually first if theyre worth keeping or useless
-                    success_dl.append(url)
-                else:
-                    logger.warning("Download of %s failed after %s tries - File was skipped!", url, n)
+            cur_nr += 1
 
-            except Exception as e:
-                raise UnexpectedCrash("download_thread", (thread, dl_list), "Unecpected crash while downloading! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
-        else:
-            logger.warning("File already exists, url \"%s\" has been skipped!", url)
-        cur_nr += 1
+        except Exception as e:
+            raise UnexpectedCrash("download_thread", (thread, dl_list), "Unexpected crash while downloading! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
 
     if failed_md5:
         thread["failed_md5"] = failed_md5
@@ -776,66 +704,34 @@ def download_thread(thread, dl_list, overwrite=False, retries=1):
     append_to_file(exp_str, os.path.join(thread_folder, exp_txt_filename))
 
     # append md5 of downloaded files to md5 file in cwd (old: named thread_folder_name.md5)
-    append_to_md5_file(thread, success_dl)  #, thread_folder, sanitized_folder_name)
+    append_to_md5_file(thread, success_dl, root_dir)  #, thread_folder, sanitized_folder_name)
 
     return failed_md5
 
 
-def check_4chfile_crc(file_dict, thread_folder):
-    fn = f"{file_dict['dl_filename']}.{file_dict['file_ext']}"
-    logger.debug("CRC-Checking file \"%s\"!", fn)
-    if check_4chan_md5(os.path.join(thread_folder, fn), file_dict['file_md5_b64']):
-        logger.debug("MD5-Check   \"%s\" OK", fn)
-        return True
-    else:
-        logger.warning("MD5-Check   \"%s\" FAILED", fn)
-        return False
-
-
-def check_thread_files_crc(thread, success_dl, thread_folder):
-    logger.info("CRC-Checking files!")
-    failed_md5 = []
-    for url in success_dl:
-        fn = f"{thread[url]['file_info']['dl_filename']}.{thread[url]['file_info']['file_ext']}"
-        if check_4chan_md5(os.path.join(thread_folder, fn), thread[url]['file_info']['file_md5_b64']):
-            logger.debug("MD5-Check   \"%s\" OK", fn)
-        else:
-            logger.warning("MD5-Check   \"%s\" FAILED", fn)
-            failed_md5.append(url)
-    if not failed_md5:
-        logger.info("CRC-Check successful, all files match corresponding MD5s!")
-    else:
-        fmd5str = '\n'.join(failed_md5)
-        write_to_file(f"Failed MD5s of Thread No. {thread['OP']['thread_nr']}:\n"
-                      f"{fmd5str}", os.path.join(thread_folder, "FAILED_MD5.txt"))
-        logger.warning("The following files failed CRC-Check:\n%s", fmd5str)
-
-    return failed_md5
-
-
-def watch_clip_for_4ch_threads():
+def watch_clip_for_4ch_threads(files_info_dict, root_dir):
     """Watch clip for 4chan thread urls, once url is found process_4ch_thread is called,
     returned thread dicts and dl_links (which also are the keys of files to dl in thread dict)
-    are appended to internal found list of ClipboardWatcher. After KeyboardInterrupt we
-    assign that list to to_dl"""
+    are appended to to_dl."""
+    stopping = False
     to_dl = []
-    watcher = ClipboardWatcher(is_4ch_thread_url, process_4ch_thread, ROOTDIR, 0.1)
     try:
         print("Watching clipboard for 4chan thread urls...")
-        watcher.run_append_found()
+        recent_value = "" 
+        while not stopping:
+                tmp_value = pyperclip.paste()
+                if tmp_value != recent_value:
+                        recent_value = tmp_value
+                        if is_4ch_thread_url(recent_value):
+                                try:
+                                    to_dl.append(process_4ch_thread(recent_value, files_info_dict))
+                                except Exception as e:
+                                    raise UnexpectedCrash("watch_clip_for_4ch_threads", to_dl, "Unexpected crash while watching clipboard and appending! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
+                time.sleep(0.1)
     except KeyboardInterrupt:
-        watcher.stop()
-        to_dl = watcher.get_found()
-        print("Stopped watching clipboard!")
-    except Exception:
-        # wont be able to add any info since we crashed while info was still in ClipWatcher
-        # just reraise so we can handle in outermost scope
-        raise
+        print("Stopped watching clipboard for 4chan threads!")
 
-    try:
-        dl_multiple_threads(to_dl)
-    except Exception:
-        raise
+    dl_multiple_threads(to_dl, files_info_dict, root_dir)
 
 
 def read_from_file(file_path):
@@ -844,15 +740,15 @@ def read_from_file(file_path):
     return contents
     
 
-def export_state_from_dict(program_state):
+def export_state_from_dict(program_state, filepath):
     # readability indent=4, sort_keys=True
     json_exp_str = json.dumps(program_state, indent=4, sort_keys=True)
-    write_to_file(json_exp_str, "crash-exp.json")
+    write_to_file(json_exp_str, filepath)
 
 
-def import_state():
+def import_state(filepath):
     """State list contains tuple(s) of (thread, dl_list) pairs"""
-    json_imp = read_from_file("crash-exp.json")
+    json_imp = read_from_file(filepath)
     state = json.loads(json_imp)
     return state
 
@@ -860,7 +756,7 @@ def import_state():
 # Default parameter values are evaluated when the function definition is executed. This means that the expression is evaluated once, when the function is defined, and that same “pre-computed” value is used for each call. This is especially important to understand when a default parameter is a mutable object, such as a list or a dictionary: if the function modifies the object (e.g. by appending an item to a list), the default value is in effect modified.
 # Lists are a mutable objects; you can change their contents. The correct way to get a default list (or dictionary, or set) is to create it at run time instead, inside the function
 # dont use test(a, b=[]) since all funcs calls will use the same list do it like below
-def dl_multiple_threads(to_dl, successful_dl_threads=None, overwrite=False):
+def dl_multiple_threads(to_dl, files_info_dict, root_dir, successful_dl_threads=None, overwrite=False):
     if successful_dl_threads is None:
         successful_dl_threads = []
 
@@ -871,7 +767,7 @@ def dl_multiple_threads(to_dl, successful_dl_threads=None, overwrite=False):
             try:
                 # only start dl if file urls were copied from clipboard
                 if dl_list:
-                    download_thread(thread, dl_list, overwrite=overwrite)
+                    download_thread(thread, dl_list, files_info_dict, root_dir, overwrite=overwrite)
                     successful_dl_threads.append(thread["OP"]["thread_nr"])
             except Exception as e:
                     raise UnexpectedCrash("dl_multiple_threads", (to_dl, successful_dl_threads), "Unexpected crash while downloading multiple 4ch threads! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
@@ -896,7 +792,7 @@ def user_handle_failed_md5(thread, failed_md5):
     i_failed_names = "\n".join((f'({i}) {thread[url]["file_info"]["dl_filename"]}' for i, url in enumerate(failed_md5)))
     keep = input(f"Type in the indexes seperated by \",\" of files to keep in Thread No. {thread['OP']['thread_nr']} "
                  f"with failed CRC-Checks: \"{thread['OP']['subject']}\"\n{i_failed_names}\n")
-    keep = [int(i) for i in keep.split(",")]
+    keep = [int(i) for i in keep.split(",")] if keep else []
     kept_failed_lns = []
     for i, url in enumerate(failed_md5):
         file_info = thread[url]["file_info"]
@@ -927,11 +823,11 @@ def user_handle_failed_md5(thread, failed_md5):
 
 
 
-def resume_from_state_dict(state_dict):
+def resume_from_state_dict(state_dict, files_info_dict, root_dir):
     # TODO copy inline comments into docstr
     # four possible keys in state dict 
     # "download_thread" contains one/or only alrdy processed thread
-    # "ClipboardWatcher" contains alrdy processed threads and dl_lists, crashed while process_4ch_thread so while watch_for_file_urls
+    # "watch_clip_for_4ch_threads" contains alrdy processed threads and dl_lists, crashed while process_4ch_thread so while watch_for_file_urls
     # "process_4ch_thread" contains latest thread, no dl_list since it crashed while watching for urls b4 returning it
     # "dl_multiple_threads" contains one/multiple already processed threads and dl_lists, saved cause crashed while downloading
 
@@ -945,16 +841,14 @@ def resume_from_state_dict(state_dict):
         logger.info("Continuing with download of multiple threads!")
         to_dl, successful_dl_threads = state_dict["dl_multiple_threads"]
         # reraise here since we might have succesfully downloaded a thread
-        try:
-            # overwrite old since they might be corrupt
-            dl_multiple_threads(to_dl, successful_dl_threads, overwrite=True)
-        except Exception:
-            raise
+        # overwrite old since they might be corrupt
+        dl_multiple_threads(to_dl, files_info_dict, root_dir, successful_dl_threads=successful_dl_threads,
+                overwrite=True)
 
-    elif "ClipboardWatcher" in keys:
+    elif "watch_clip_for_4ch_threads" in keys:
         # was inside watch_clip_for_4ch_threads b4 crash -> continue with watching for urls for latest thrad (use key "process_4ch_thread") then dl all
         # last item in this list isnt actually the thread we working on b4 the crash
-        to_dl = state_dict["ClipboardWatcher"]
+        to_dl = state_dict["watch_clip_for_4ch_threads"]
 
         try:
             last_thread = state_dict["process_4ch_thread"]
@@ -967,22 +861,19 @@ def resume_from_state_dict(state_dict):
             last_dl_list = recreate_dl_list(last_thread)
 
             logger.info("Start watching for 4ch_file_urls for latest thread \"%s\" -> will be downloaded with the previously processed threads afterwards!", last_thread["OP"]["thread_nr"])
-            # dont try to raise UnexpectedCrash here unless we just supply to_dl again for crash point "ClipboardWatcher" -> few copies we have to do again dont matter?
-            last_dl_list = watch_for_file_urls(last_thread, prev_dl_list=last_dl_list)
+            # dont try to raise UnexpectedCrash here unless we just supply to_dl again for crash point "watch_clip_for_4ch_threads" -> few copies we have to do again dont matter?
+            last_dl_list = watch_for_file_urls(last_thread, files_info_dict, prev_dl_list=last_dl_list)
             to_dl.append((last_thread, last_dl_list))
 
         logger.info("Continuing with download of multiple threads!")
-        # here we can reraise due to successful thread dls
-        try:
-            # nothing was downloaded b4 crash
-            dl_multiple_threads(to_dl)
-        except Exception:
-            raise
+        # here we can reraise (NO! -> dont need to reraise to catch exception in outer scope, only if we wanted to raise new type of Exception (UnexpectedCrash) or add information to the Exception) due to successful thread dls
+        # nothing was downloaded b4 crash
+        dl_multiple_threads(to_dl, files_info_dict, root_dir)
 
     elif "process_4ch_thread" in keys:
         # 1) single option -> continue with watch file urls
-        # 2) as callback in ClipboardWatcher: "ClipboardWatcher"->true, a) continue to watch for file urls for thread(latest) then dl latest+rest from ClipboardWatcher or b) dl(latest) + rest right away
-        # 2) alrdy account for when reaching this point (cause of elif "ClipboardWatcher"..)
+        # 2) from "watch_clip_for_4ch_threads": "watch_clip_for_4ch_threads"->true, a) continue to watch for file urls for thread(latest) then dl latest+rest from watch_clip_for_4ch_threads or b) dl(latest) + rest right away
+        # 2) alrdy account for when reaching this point (cause of elif "watch_clip_for_4ch_threads"..)
 
         last_thread = state_dict["process_4ch_thread"]
 
@@ -991,18 +882,16 @@ def resume_from_state_dict(state_dict):
         # multiple if statements (and for..in allowed in comprehension) -> stack them after each other
         last_dl_list = recreate_dl_list(last_thread)
         # dont reraise here
-        last_dl_list = watch_for_file_urls(last_thread, prev_dl_list=last_dl_list)
+        last_dl_list = watch_for_file_urls(last_thread, files_info_dict, prev_dl_list=last_dl_list)
 
         # just single thread need to reraise since dl_list complete and we land in "download_thread" next resume -> tested OK
+        # reraising uneccessary see above
+        # nothing dled b4 crash
+        download_thread(last_thread, last_dl_list, files_info_dict, root_dir)
         try:
-            # nothing dled b4 crash
-            download_thread(last_thread, last_dl_list)
-            try:
-                user_handle_failed_md5(last_thread, last_thread["failed_md5"])
-            except KeyError:
-                pass
-        except Exception:
-            raise
+            user_handle_failed_md5(last_thread, last_thread["failed_md5"])
+        except KeyError:
+            pass
 
     elif "download_thread" in keys:
         # 1) single opt: probably fix error manually -> re-dl
@@ -1013,7 +902,7 @@ def resume_from_state_dict(state_dict):
         logger.info("Found failed download -> trying to re-download, old files will be overwritten!")
         # no need to reraise since well just land here again with the same info anyways
         # ovewrite since file dled b4/at crash might be corrupt
-        download_thread(thread, dl_list, overwrite=True)
+        download_thread(thread, dl_list, files_info_dict, root_dir, overwrite=True)
         try:
             user_handle_failed_md5(thread, thread["failed_md5"])
         except KeyError:
@@ -1054,35 +943,41 @@ class UnexpectedCrash(Exception):
 
 
 def main():
+    # set ROOTDIR to loc we were called from (path from terminal -> getcwd())
+    # better use dir of script, since we might not want to write our files at terminals cwd
+    # ROOTDIR = os.getcwd()
+    # sys.argv[0] is path to script -> which is fchdl-runner.py (but might be __main__.py as well)
+    ROOTDIR = os.path.dirname(os.path.realpath(sys.argv[0]))
+    # set working dir, so functions that just write to working dir e.g. with open("test.txt",..)
+    # also write to correct folder -> passing root_dir/a full path to all functions here now so not
+    # needed but it was b4 were we would just write to cwd
+    # os.chdir(ROOTDIR)
+    configure_logging(os.path.join(ROOTDIR, "fourchandl.log"))
+
     # dont use clipwatch but use thread url as argv -> have to wait for imports when new thread
     cmd_line_arg1 = sys.argv[1]
-    if cmd_line_arg1.startswith("http"):
+    files_info_dict = import_files_info_pickle(os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
+    if cmd_line_arg1 == "watch":
         try:
-            thread, dl_list = process_4ch_thread(cmd_line_arg1)
-            if dl_list:
-                download_thread(thread, dl_list)
-            try:
-                user_handle_failed_md5(thread, thread["failed_md5"])
-            except KeyError:
-                pass
+            watch_clip_for_4ch_threads(files_info_dict, ROOTDIR)
         except UnexpectedCrash as e:
-            export_state_from_dict(e.program_state)
-            raise
-    elif cmd_line_arg1 == "watch":
-        try:
-            watch_clip_for_4ch_threads()
-        except UnexpectedCrash as e:
-            export_state_from_dict(e.program_state)
+            export_files_info_pickle(files_info_dict, os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
+            export_state_from_dict(e.program_state, os.path.join(ROOTDIR, "crash-exp.json"))
+            # here we really need to except and reraise since we want to export information in-between but still want the program to end with the traceback
             raise
     elif cmd_line_arg1 == "resume":
-        state = import_state()
+        state = import_state(os.path.join(ROOTDIR, "crash-exp.json"))
         # we just catch UnexpectedCrash here and then export state so resume_from_state_dict
         # handles when UnexpectedCrash gets raised or reraised to here (have to be careful since we might overwrite old state export that wasnt properly downloaded yet)
         try:
-            resume_from_state_dict(state)
+            resume_from_state_dict(state, files_info_dict, ROOTDIR)
         except UnexpectedCrash as e:
-            export_state_from_dict(e.program_state)
+            export_files_info_pickle(files_info_dict, os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
+            export_state_from_dict(e.program_state, os.path.join(ROOTDIR, "crash-exp.json"))
             raise
+
+    # always write udated files_info after script is done
+    export_files_info_pickle(files_info_dict, os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
 
 
 if __name__ == "__main__":

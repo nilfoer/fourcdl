@@ -94,3 +94,71 @@ using filesize as keys to group files together to keep set sizes low when trying
     It has O(n) worst case, because you can always contrive a pathological example where all the keys have the same hash value.
 
 ___________________________________________________
+
+i dont need to have 
+try: 
+    blabla 
+except Exception: 
+    raise
+everywhere -> ONLY need
+except Exception as e:
+    # instead of using raise UnexpectedCrash from e (gets rid of traceback) use with_traceback
+    raise UnexpectedCrash
+in functions where i want to add information, even if exception happens in 
+watch_clip_for_4ch_threads -> dl_multiple_threads -> download_thread -> download_4chan_file_url -> download_with_retries_crc
+-> download
+i can still catch it in download_thread (tested) where i need to add information by raising UnexpectedCrash for resume info
+
+remove all empty reraises where no info gets added and used assert(False) in download to trigger exception
+-> UnexpectedCrash was raised correctly -> resume also worked without errors
+
+another case where we need it is:
+try:
+    while True:
+        tmp_value = pyperclip.paste()
+        if tmp_value != recent:
+            return tmp_value
+        time.sleep(0.1)
+except KeyboardInterrupt:
+    raise # reraise exception and handle it in outer scope 
+---> OUTER SCOPE:
+try:
+    recent_value = get_new_clipboard(recent_value)
+except KeyboardInterrupt:
+    handle it...
+
+we technically only need it in outer scope, since the exception can be caught/excepted at any point in the callstack 
+but if we call it from a function that doesnt catch the KeyboardInterrupt then the whole program crashes when we
+Ctrl-C since thats the only way to get out of that while True: (without copying new val to clip)
+but we could also remove the reraise and except KeyboardInterrupt in outer scope and do this:
+except KeyboardInterrupt:
+    return None
+---> OUTER SCOPE:
+recent_value = get_new_clipboard(recent_value)
+if recent_value is None:
+    handle it...
+
+which is cleaner!!
+
+___________________________________________________    
+
+import os
+
+print("Path at terminal when executing this file")
+print(os.getcwd() + "\n")
+
+print("This file path, relative to os.getcwd()")
+print(__file__ + "\n")
+
+print("This file full path (following symlinks)")
+full_path = os.path.realpath(__file__)
+print(full_path + "\n")
+
+print("This file directory and name")
+path, filename = os.path.split(full_path)
+print(path + ' --> ' + filename + "\n")
+
+print("This file directory only")
+os.path.dirname(os.path.realpath(__file__))
+
+___________________________________________________
