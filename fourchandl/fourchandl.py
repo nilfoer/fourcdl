@@ -415,6 +415,7 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
     unique_check = thread["OP"]["unique_check"]
 
     print("Watching clipboard for 4chan file urls...")
+    print("Copy cmds are: rename_thread, reset_filename, remove_file !")
     recent_value = None
     file_post_dict = None
     while running:
@@ -551,7 +552,11 @@ def download(url, dl_path):
     try:
         _, headers = urllib.request.urlretrieve(url, dl_path)  # reporthook=prog_bar_dl)
     except urllib.request.HTTPError as err:
-        logger.warning("HTTP Error {}: {}: \"{}\"".format(err.code, err.reason, url))
+        # catch this more detailed first then broader one (HTTPError is subclass of URLError)
+        logger.warning("HTTP Error %s: %s: \"%s\"", err.code, err.reason, url)
+        return False, None
+    except urllib.request.URLError as err:
+        logger.warning("URL Error %s: \"%s\"", err.reason, url)
         return False, None
     else:
         return True, headers
@@ -648,7 +653,6 @@ def download_4chan_file_url(url, dl_path, file_dict, files_info_dict, overwrite=
             add_file_to_files_info(files_info_dict, file_dict["file_ext"], 
                     int(headers["Content-Length"]), file_dict["file_md5_b64"])
         else:
-            # HARDCODED
             logger.warning("Download of %s failed after %s tries - File was skipped!", url, 
                     retries+1)
     else:
@@ -772,13 +776,14 @@ def dl_multiple_threads(to_dl, files_info_dict, root_dir, successful_dl_threads=
     # assume all are downloaded
     for thread, _ in to_dl:
         try:
-            user_handle_failed_md5(thread, thread["failed_md5"])
+            user_handle_failed_md5(thread, thread["failed_md5"], root_dir)
         except KeyError:
             continue
 
 
-def user_handle_failed_md5(thread, failed_md5):
-    with open("4chan_dl.md5", "r", encoding="UTF-8") as f:
+def user_handle_failed_md5(thread, failed_md5, root_dir):
+    root_md5_path = os.path.join(root_dir, "4chan_dl.md5")
+    with open(root_md5_path, "r", encoding="UTF-8") as f:
         root_md5_file = f.read()
 
     # we already warned b4
@@ -800,7 +805,7 @@ def user_handle_failed_md5(thread, failed_md5):
 
         # check if we want to keep file
         if i in keep:
-            actual_md5 = md5(os.path.join(thread_folder_name, fn))
+            actual_md5 = md5(os.path.join(root_dir, thread_folder_name, fn))
             # replace orig md5 in root md5 file with actual md5
             # WARNING dont only replace orig_md5 since md5 might be in root md5 alrdy (since we dont check for dupes when downloading)
             # -> use md5 *path instead
@@ -809,13 +814,13 @@ def user_handle_failed_md5(thread, failed_md5):
             kept_failed_lns.append(f"{orig_md5} *{thread_folder_name}/{fn}")
         else:
             logger.info("Removing \"%s\" from folder and root md5 file", fn)
-            os.remove(os.path.join(thread["OP"]["folder_name"], fn))
+            os.remove(os.path.join(root_dir, thread["OP"]["folder_name"], fn))
             root_md5_file = root_md5_file.replace(f"{orig_md5} *{thread_folder_name}/{fn}\n", "", 1)
 
     if kept_failed_lns:
-        append_to_file("\n".join(kept_failed_lns) + "\n", "kept_failed_md5_files.md5")
+        append_to_file("\n".join(kept_failed_lns) + "\n", os.path.join(root_dir, "kept_failed_md5_files.md5"))
 
-    with open("4chan_dl.md5", "w", encoding="UTF-8") as w:
+    with open(root_md5_path, "w", encoding="UTF-8") as w:
         w.write(root_md5_file)
 
 
@@ -887,7 +892,7 @@ def resume_from_state_dict(state_dict, files_info_dict, root_dir):
         # nothing dled b4 crash
         download_thread(last_thread, last_dl_list, files_info_dict, root_dir)
         try:
-            user_handle_failed_md5(last_thread, last_thread["failed_md5"])
+            user_handle_failed_md5(last_thread, last_thread["failed_md5"], root_dir)
         except KeyError:
             pass
 
@@ -902,7 +907,7 @@ def resume_from_state_dict(state_dict, files_info_dict, root_dir):
         # ovewrite since file dled b4/at crash might be corrupt
         download_thread(thread, dl_list, files_info_dict, root_dir, overwrite=True)
         try:
-            user_handle_failed_md5(thread, thread["failed_md5"])
+            user_handle_failed_md5(thread, thread["failed_md5"], root_dir)
         except KeyError:
             pass
 
