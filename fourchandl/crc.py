@@ -53,6 +53,11 @@ def convert_b64str_to_hex(b64_str):
     return binascii.hexlify(binascii.a2b_base64(b64_str)).decode("ascii")
 
 
+def convert_hex_to_b64str(hexstr):
+    # hex to bytes and then bytes to b64
+    return binascii.b2a_base64(binascii.unhexlify(hexstr)).decode("utf-8")
+
+
 def check_4chfile_crc(file_path, md5_b64):
     _, fn = os.path.split(file_path)
     logger.debug("CRC-Checking file \"%s\"!", fn)

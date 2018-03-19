@@ -162,3 +162,13 @@ print("This file directory only")
 os.path.dirname(os.path.realpath(__file__))
 
 ___________________________________________________
+
+when iterating over dict use for k, v in d.items() instead of:
+for k in d:
+    v = d[k]
+since for the latter one k needs to be hashed to access the value that k points to
+-> large dict esp. bad
+
+when iterating over d.keys() instead of for key in d -> u can mutate the dict ure iterating over since .keys() gets keys and makes a copy of it
+
+___________________________________________________

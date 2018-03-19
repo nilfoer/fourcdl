@@ -17,6 +17,8 @@ def setup_thread_for_handled_failed_md5():
     state_dict = import_json(os.path.join(failed_md5_files_path, "crash-exp.json"))
     to_dl, successful_dl_threads = state_dict["dl_multiple_threads"]
     thread, dl_list = to_dl[0]
+    # fourchandl now uses https://.. as key but these tests are still valid since
+    # the json still uses these all over and nothing gets dled here
     thread["failed_md5"] = ["//i.4cdn.org/v/1521370213050.png", "//i.4cdn.org/v/1521370986708.jpg",
             "//i.4cdn.org/v/1521372959414.png"]
 

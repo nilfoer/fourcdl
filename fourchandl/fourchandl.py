@@ -104,6 +104,12 @@ def get_file_info(post):
             # unpack groups
             file_size, file_res = re.match(file_size_res_re, filediv_cont.text).groups()
             file_thumb = filediv.select_one("img")
+
+            # make sure were using https later when downloading by prepending https
+            # both http and https work: https is obv. preferred
+            # but continue to use url without https? as keys in success_dl list etc.
+            file_url = f"https:{file_url}"
+
             file_info = {
                 "file_url": file_url,
                 "file_name_4ch": file_name_4ch,
@@ -164,6 +170,8 @@ def get_op(soup):
     _, post_msg = get_post_msg(op)
     return thread_nr, subj, post_msg, utc
 
+
+remove_https_re = re.compile("^https?:")
 
 # ich machs jetzt wie ichs von casey(handmade hero) gelernt habe: "always write your usage code first!"
 # right now we're writing the platform layer input code even though we dont have
@@ -379,7 +387,6 @@ def convert_4chan_file_size(fsize_str):
     return result
 
 
-remove_https_re = re.compile("^https?:")
 def get_all_file_urls_thread(thread, unique_check, files_info_dict):
     if unique_check:
         unique_only = cli_yes_no("Only downloaded unique (file donwloaded before) files?")
@@ -436,8 +443,8 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
         # so we dont process the file_url from b4 when we stop watching clip
         else:
             if is_4ch_file_url(recent_value):
-                # remove https?: from start of url, better to use address without http/https since the copies differ with/without 4chan x
-                file_url = re.sub(remove_https_re, "", recent_value)
+                # remove https?: from start of url, better to use address without http/https since the copies differ with/without 4chan x -> or just make sure that its https: by replacing match with https:
+                file_url = re.sub(remove_https_re, "https:", recent_value)
 
                 # file_url alrdy processed? -> skip.. or use as possibility to rename -> to rename just get rid of this if
                 # if file_url not in dl_list:
@@ -640,10 +647,7 @@ def download_4chan_file_url(url, dl_path, file_dict, files_info_dict, overwrite=
     dl_success, md5_match = None, None
 
     if not os.path.isfile(dl_path) or overwrite:
-        # add https part to url, since both http and https work: https is obv. preferred
-        # but continue to use url without https? as keys in success_dl list etc.
-        furl = f"https:{url}"
-        dl_success, md5_match, headers = download_with_retries_crc(furl, dl_path, 
+        dl_success, md5_match, headers = download_with_retries_crc(url, dl_path, 
                 file_dict["file_md5_b64"], retries=retries)
 
         # WARNING only added if md5_match even if we decide to keep the file
@@ -673,9 +677,10 @@ def download_thread(thread, dl_list, files_info_dict, root_dir, overwrite=False)
     for url in dl_list:
         file_dict = thread[url]["file_info"]
         dl_path = os.path.join(thread_folder, f"{file_dict['dl_filename']}.{file_dict['file_ext']}")
+        file_url = file_dict["file_url"]
         logger.info("Downloading: \"%s\", File %s of %s", url, cur_nr, nr_files_thread)
         try:
-            dl_success, md5_match = download_4chan_file_url(url, dl_path, file_dict, files_info_dict, overwrite=overwrite)
+            dl_success, md5_match = download_4chan_file_url(file_url, dl_path, file_dict, files_info_dict, overwrite=overwrite)
 
             if dl_success:
                 # we even keep files with failed md5 -> user hast to check them manually first if theyre worth keeping or useless
