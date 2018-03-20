@@ -172,3 +172,59 @@ since for the latter one k needs to be hashed to access the value that k points 
 when iterating over d.keys() instead of for key in d -> u can mutate the dict ure iterating over since .keys() gets keys and makes a copy of it
 
 ___________________________________________________
+
+OOP vs data-oriented
+
+hier eigentlich als versuch verwendet data-oriented zu programmieren, dadurch und vor allem auch weil python
+hierfuer nicht die notwendigen instrumente bietet viel komplizierter/unuebersichtlicher etc. und damit
+wahrscheinlich auch qualitativ schlechter und weniger performant(<- das eher nicht, vllt sogar gegenteil) geworden
+-> waere vllt gegangen, wenn ich statt dicts C-struct-like classes benutzt haette also Klassen die einfach nur
+attribute haben:
+# C-struct-like structure in python using dictionaries(wont return error when setting on wrong key), namedtuple(but its immutable, as in you cant do this Player(x=10,y=0) Player.x += 1 or a class
+# class Bunch:
+# ...     def __init__(self, **kwds):
+# ...         self.__dict__.update(kwds)
+# ...
+# >>> mystruct = Bunch(field1=value1, field2=value2)
+# or using __slots__ for less memory overhead and faster attribute access
+# (must inherit from object, and all inherting classes must declare __slots__ and cant have __dict__ entry)
+# class AB(object):
+#     __slots__ = ('a', 'b')
+# test = AB(); test.a = 1
+# but then test = AB(0,1) isnt possible NO it is possible if you define an __init__ function
+# >>> class AB(object):
+# ...     __slots__ = ("a", "b")
+# ...     def __init__(self, a, b):
+# ...             self.a = a
+# ...             self.b = b
+# ...
+# >>> test1 = AB(5,9)
+# >>> test1.a
+# 5
+-> mit diesem Konstrukt/Datentyp waere 4chdl zu schreiben deutlich einfacher gewesen und mind. genau so performant
+wenn nicht sogar schneller, da (wir verwenden ja z.zT. dicts fuer alles fuer das man sonst structs verwenden wuerde
+__slots__ performanter ist
+
+schlussfolgernd:
+1. fuer projekte, die entweder nicht so viel wert auf performance legen oder fuer die einfache erweiterbarkeit (z.B. auch durch dritte)
+wichtig ist -> OOP besser als data-oriented
+2. sprachen, so verwenden wie sie konzipiert/für sachen verwenden fuer die sie optimiert wurden bzw. es muss nicht
+unbedingt das ziel/beabsichtigt gewesen sein, dass die sprache sich gut fuer etwas verwenden laesst
+z.B. C++ eigtl. fuer OOP, aber trotzdem sehr gut fuer data-oriented (wie Casey und Jonathan Blow sie benutzen;
+sie benutzen z.B. [oder habs zumindest nicht gesehen] auch nicht die Moeglichkeit functions mit in structs
+zu packen und dann wie bei Class-methods Structname struct1; struct1.play() aufrufen zu koennen
+sie benutzen immer play(struct1) usw. -> sonst waer ihr argmuent das OOP -> zu viele function calls etc. unsinnig
+da mit struct1.play() die function ja wieder bei jedem einzelnen struct aufgerufen wird und dann gleich viele function
+calls vorliegen wuerden wie bei OOP mit Klassen
+=> structs wie jblow und casey sie benutzen -> Datentyp, der aus mehreren anderen Datentypen besteht -> diese sind
+dann mit vorher festgelegtem Variablennamen mit struct1.foo etc. (wie Attribute bei Klassen) zugaenglich (structs
+koennen auch geschachtelt werden z.B. struct Player enhaelt struct Position etc.)
+-> aehnlich wie in Python Klassen ohne Methoden zu verwenden, einfach nur um die Attribute nutzen zu koennen
+und verschiedene Attribute in einem benannten Objekt speichern zu koennen z.B. 4chanThread der wiederum Posts im
+Attribut 4chanThread.postlist oder so enhaelt
+-> d.h. es geht vllt doch (gegensaetzlich zu dem was unterhalb steht) in python data-oriented programmieren zu wollen, 
+aber trotzdem muss man besondere Konstruke benutzen und Feature vermeiden/umgehen, damit es moeglich wird, also eher
+suboptimal (obwohl es sich ja bei python doppelt lohnen muesste, da function calls in python ja so teuer sind)
+(-> unsinnig in python data-oriented programmieren zu wollen)
+(deshalb 4chdl und tsu-info unnoetig verkompliziert)
+___________________________________________________

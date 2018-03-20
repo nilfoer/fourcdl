@@ -842,13 +842,13 @@ def resume_from_state_dict(state_dict, files_info_dict, root_dir):
     # be CAREFUL where we raise UnexpectedCrash or reraise since that (or reraising UnexpectedCrash)
     # will lead to crash-exp.json to be overwritten and we might have crashed again b4 being done
     # wont be bad if we still collect all the necessary info
-    # not raising UnexpectedCrash or not reraising UnexpectedCrash -> wont make it to outer scope where export state would be called -> nothing happens
+    # not raising UnexpectedCrash -> export state wont be called -> nothing happens
+    # we dont need to reraise for UnexpectedCrash to reach outmost scope, no matter where we raise it unless we except it (and then dont reraise it) it will reach outmost scope and it will be caught and state will get exported
     keys = state_dict.keys()
     if "dl_multiple_threads" in keys:
         # crashed while downloading multiple threads, all fns and dl_lists alrdy created -> error has to be fixed manually in code/json, supply alrdy successfuly download threads b4 crash as optional argument so they wont get downloaded again (-> duplicates in exp txt and md5)
         logger.info("Continuing with download of multiple threads!")
         to_dl, successful_dl_threads = state_dict["dl_multiple_threads"]
-        # reraise here since we might have succesfully downloaded a thread
         # overwrite old since they might be corrupt
         dl_multiple_threads(to_dl, files_info_dict, root_dir, successful_dl_threads=successful_dl_threads,
                 overwrite=True)
@@ -908,7 +908,6 @@ def resume_from_state_dict(state_dict, files_info_dict, root_dir):
         thread, dl_list = state_dict["download_thread"]
 
         logger.info("Found failed download -> trying to re-download, old files will be overwritten!")
-        # no need to reraise since well just land here again with the same info anyways
         # ovewrite since file dled b4/at crash might be corrupt
         download_thread(thread, dl_list, files_info_dict, root_dir, overwrite=True)
         try:
