@@ -53,10 +53,10 @@ def json_as_python_set(dct):
 
 
 VALID_FILE_EXT = ("webm", "gif", "jpg", "png")
-DIR_SUBSTR_EXCLUDE = (".git", "_files", "-Dateien")
-def generate_downloaded_files_info():
+DIR_SUBSTR_EXCLUDE = (".git", "_files", "-Dateien", "fourchandl")
+def generate_downloaded_files_info(root_dir):
     files_info = {ext: {} for ext in VALID_FILE_EXT}
-    for dirpath, dirnames, fnames in os.walk("."):
+    for dirpath, dirnames, fnames in os.walk(root_dir):
         # When topdown is true, the caller can modify the dirnames list in-place (e.g., via del or slice assignment), and walk will only recurse into the subdirectories whose names remain in dirnames; this can be used to prune the search...
         # dirs[:] = value modifies dirs in-place. It changes the contents of the list dirs without changing the container. As help(os.walk) mentions, this is needed if you wish to affect the way os.walk traverses the subdirectories. (dirs = value merely reassigns (or "binds") the variable dirs to a new list, without modifying the original dirs
         # exclude website dl files (thumbnails js html etc.)
@@ -205,14 +205,21 @@ def add_file_to_files_info(files_info_dict, f_type, size_bytes, md5_b64):
     logger.debug("Added file with md5_b64 %s to files_info", md5_b64)
 
 
-def main():
-    files_info = generate_downloaded_files_info()
-    # files_info = import_files_info_pickle("downloaded_files_info.pickle")
-    # export_files_info_json(files_info, "downloaded_files_info.json")
-    files_info = adjust_sizes(files_info, 1024, dec=0)
-    export_files_info_pickle(files_info, "downloaded_files_info.pickle")
-    # for e in VALID_FILE_EXT:
-    #     print(e, len(files_info[e].keys()))
-
-if __name__ == "__main__":
-    main()
+# def main():
+#     # imports (import fourchandl.blabla) not working when trying to run this as script:
+#     # (also doesnt work if i rename fourchandl.fourchandl to something else so module doesnt match package name
+#     # Are you by any chance trying to run a module in the package as a script? You can't do that, as that would mean the file is 'imported' as __main__ and has no context of a package.
+#     # -> handle all usage of fourchandl as script using -runner.py file (that uses fourchandl.fourchandl main()) or __main__.py in fourchandl folder
+# 
+#     # go up one dir with ".."
+#     module_parent_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")
+#     files_info = generate_downloaded_files_info(module_parent_dir)
+#     # files_info = import_files_info_pickle("downloaded_files_info.pickle")
+#     # export_files_info_json(files_info, "downloaded_files_info.json")
+#     files_info = adjust_sizes(files_info, SIZE_DIV, dec=ROUND_DECS)
+#     export_files_info_pickle(files_info, "downloaded_files_info.pickle")
+#     # for e in VALID_FILE_EXT:
+#     #     print(e, len(files_info[e].keys()))
+# 
+# if __name__ == "__main__":
+#     main()

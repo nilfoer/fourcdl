@@ -12,7 +12,7 @@ import bs4
 import pyperclip
 
 from fourchandl.logging_setup import configure_logging
-from fourchandl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, export_files_info_pickle, add_file_to_files_info
+from fourchandl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, export_files_info_pickle, add_file_to_files_info, generate_downloaded_files_info, SIZE_DIV, ROUND_DECS, adjust_sizes
 from fourchandl.crc import md5, convert_b64str_to_hex, check_4chfile_crc
 
 logger = logging.getLogger(__name__)
@@ -387,15 +387,11 @@ def convert_4chan_file_size(fsize_str):
     return result
 
 
-def get_all_file_urls_thread(thread, unique_check, files_info_dict):
-    if unique_check:
-        unique_only = cli_yes_no("Only downloaded unique (file donwloaded before) files?")
-    else:
-        unique_only = None
+def get_all_file_urls_thread(thread, unique_only, files_info_dict):
     all_file_urls_thread = []
     for u in thread.keys():
         if "/" in u:
-            if unique_check and unique_only:
+            if unique_only:
                 size = convert_4chan_file_size(thread[u]["file_info"]["file_size"])
                 # if not unique/not alrdy dled -> skip
                 if not file_unique_converted(files_info_dict, 
@@ -419,7 +415,7 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
         dl_list = set(prev_dl_list)
     else:
         dl_list = set()
-    unique_check = thread["OP"]["unique_check"]
+    unique_only = thread["OP"]["unique_only"]
 
     print("Watching clipboard for 4chan file urls...")
     print("Copy cmds are: rename_thread, reset_filename, remove_file !")
@@ -429,13 +425,22 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
         recent_value = get_new_clipboard(recent_value)
         if recent_value is None:
             if file_post_dict:
-                # also report final fn on interrupt
-                logger.info("File will be downloaded as \"%s.%s\"", file_post_dict["file_info"]["dl_filename"], file_post_dict["file_info"]["file_ext"])
+                if file_post_dict["file_info"]["to_download"]:
+                    logger.info("File will be downloaded as \"%s.%s\"", file_post_dict["file_info"]["dl_filename"], file_post_dict["file_info"]["file_ext"])
+                elif not file_post_dict["file_info"]["unique"]:
+                    file_url = file_post_dict["file_info"]["file_url"]
+                    logger.info("File %s wasnt unique and therefore wasnt added to the download list!",
+                            file_post_dict["file_info"]["dl_filename"])
+                    # remove on set raises KeyError when item not present -> discard(x) doesnt
+                    dl_list.remove(file_url)
+
+                    # dl_filename key only gets created once added to dls -> remove it
+                    del file_post_dict["file_info"]["dl_filename"]
             elif not dl_list:
                 whole = input("No file urls copied! Download all file urls in thread: y/n?\n")
 
                 if whole == "y":
-                    return get_all_file_urls_thread(thread, unique_check, files_info_dict)
+                    return get_all_file_urls_thread(thread, unique_only, files_info_dict)
 
             print("Stopped watching clipboard for 4chan file urls!")
             running = False
@@ -450,20 +455,19 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
                 # if file_url not in dl_list:
                 # report on final filename if there was a prev file
                 if file_post_dict:
-                    logger.info("File will be downloaded as \"%s.%s\"", file_post_dict["file_info"]["dl_filename"], file_post_dict["file_info"]["file_ext"])
+                    if file_post_dict["file_info"]["to_download"]:
+                        logger.info("File will be downloaded as \"%s.%s\"", file_post_dict["file_info"]["dl_filename"], file_post_dict["file_info"]["file_ext"])
+                    elif not file_post_dict["file_info"]["unique"]:
+                        file_url_old = file_post_dict["file_info"]["file_url"]
+                        logger.info("File %s wasnt unique and therefore wasnt added to the download list!",
+                                file_post_dict["file_info"]["dl_filename"])
+                        # remove on set raises KeyError when item not present -> discard(x) doesnt
+                        dl_list.remove(file_url_old)
+
+                        # dl_filename key only gets created once added to dls -> remove it
+                        del file_post_dict["file_info"]["dl_filename"]
                 if file_url in dl_list:
                     logger.info("File name of %s has been RESET!!!", file_url.split("/")[-1])
-
-                # TODO
-                if unique_check:
-                    # cant use get_url_file_size here since it might take multiple seconds
-                    # use value available in 4chan file_info
-                    size = convert_4chan_file_size(thread[file_url]["file_info"]["file_size"])
-                    # if not unique/not alrdy dled -> alert user -> possibilty to manually remove it
-                    if not file_unique_converted(files_info_dict, 
-                            thread[file_url]["file_info"]["file_ext"], size,
-                            thread[file_url]["file_info"]["file_md5_b64"]):
-                        logger.info("ALERT!! File with url %s has been downloaded before! remove_file ?", file_url)
 
                 try:
                     file_post_dict = thread[file_url]
@@ -480,9 +484,21 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
                     logger.info("Found file url of file: \"%s\" Total of %s files", 
                             file_url.replace("//i.4cdn.org/", ""), len(dl_list))
                     print("Orig-fn:", file_post_dict["file_info"]["file_name_orig"])
-                # else:
-                #     print(f"SKIPPED: File of url \"{file_url}\" was already added to the list!")
 
+                    if unique_only:
+                        # cant use get_url_file_size here since it might take multiple seconds
+                        # use value available in 4chan file_info
+                        size = convert_4chan_file_size(file_post_dict["file_info"]["file_size"])
+                        # if not unique/not alrdy dled -> alert user -> possibilty to manually remove it
+                        if not file_unique_converted(files_info_dict, 
+                                file_post_dict["file_info"]["file_ext"], size,
+                                file_post_dict["file_info"]["file_md5_b64"]):
+                            file_post_dict["file_info"]["unique"] = False
+                            file_post_dict["file_info"]["to_download"] = False
+                            logger.info("ALERT!! File with url %s has been downloaded before! "
+                                        "Copy add_anyway to add file to downloads!", file_url)
+                        else:
+                            file_post_dict["file_info"]["unique"] = True
             elif recent_value == "rename_thread":
                 # option to set new folder name when rename_thread is copied
                 folder_name = input("Input new folder name:\n")
@@ -497,6 +513,10 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
                 if recent_value == "reset_filename":
                     file_post_dict["file_info"]["dl_filename"]= file_post_dict['file_info']['file_name_4ch']
                     print("Filename has been reset!")
+                elif recent_value == "add_anyway":
+                    file_post_dict["file_info"]["to_download"] = True
+                    logger.info("File \"%s\" was added to download_list even though it wasnt unique!",
+                            file_post_dict["file_info"]["dl_filename"])
                 elif recent_value == "remove_file":
                     logger.info("Removing file with filename \"%s\" from download list", file_post_dict["file_info"]["dl_filename"])
                     file_url = file_post_dict["file_info"]["file_url"]
@@ -533,7 +553,7 @@ def process_4ch_thread(url, files_info_dict):
     folder_name = input("Input the folder name the thread is going to be downloaded to "
             "(e.g. \"gif_cute\", subfolders work too \"gif_model/Emily Rudd\"):\n")
     thread["OP"]["folder_name"] = folder_name
-    thread["OP"]["unique_check"] = cli_yes_no("Check if copied files were downloaded before?")
+    thread["OP"]["unique_only"] = cli_yes_no("Only copy unique files?")
     try:
         dl_list = watch_for_file_urls(thread, files_info_dict)
     except Exception as e:
@@ -955,16 +975,19 @@ def main():
     # ROOTDIR = os.getcwd()
     # sys.argv[0] is path to script -> which is fchdl-runner.py (but might be __main__.py as well)
     ROOTDIR = os.path.dirname(os.path.realpath(sys.argv[0]))
+    # -> removed __main__.py so fourchandl can only be started as script via fchdl-runner.py
+
     # set working dir, so functions that just write to working dir e.g. with open("test.txt",..)
     # also write to correct folder -> passing root_dir/a full path to all functions here now so not
     # needed but it was b4 were we would just write to cwd
     # os.chdir(ROOTDIR)
+
     configure_logging(os.path.join(ROOTDIR, "fourchandl.log"))
 
     # dont use clipwatch but use thread url as argv -> have to wait for imports when new thread
     cmd_line_arg1 = sys.argv[1]
-    files_info_dict = import_files_info_pickle(os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
     if cmd_line_arg1 == "watch":
+        files_info_dict = import_files_info_pickle(os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
         try:
             watch_clip_for_4ch_threads(files_info_dict, ROOTDIR)
         except UnexpectedCrash as e:
@@ -973,15 +996,20 @@ def main():
             # here we really need to except and reraise since we want to export information in-between but still want the program to end with the traceback
             raise
     elif cmd_line_arg1 == "resume":
+        files_info_dict = import_files_info_pickle(os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
         state = import_state(os.path.join(ROOTDIR, "crash-exp.json"))
         # we just catch UnexpectedCrash here and then export state so resume_from_state_dict
-        # handles when UnexpectedCrash gets raised or reraised to here (have to be careful since we might overwrite old state export that wasnt properly downloaded yet)
+        # handles when UnexpectedCrash gets raised or reraised(when we except it and raise it again to e.g. add information) to here (have to be careful since we might overwrite old state export that wasnt properly downloaded yet)
         try:
             resume_from_state_dict(state, files_info_dict, ROOTDIR)
         except UnexpectedCrash as e:
             export_files_info_pickle(files_info_dict, os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
             export_state_from_dict(e.program_state, os.path.join(ROOTDIR, "crash-exp.json"))
             raise
+    elif cmd_line_arg1 == "gen_info":
+        files_info_dict = generate_downloaded_files_info(ROOTDIR)
+        files_info_dict = adjust_sizes(files_info_dict, SIZE_DIV, dec=ROUND_DECS)
+
 
     # always write udated files_info after script is done
     export_files_info_pickle(files_info_dict, os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
@@ -989,9 +1017,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # md5 b64 test
-    # print(check_4chan_md5("4chtest_files/1511725708046.webm", "Omr1x0rvF/zt4RqJcNYarA=="))
-    # import pprint
-    # with open("test.txt", "w", encoding="UTF-8") as f:
-    #     pprint.pprint(thread, stream=f)
-    

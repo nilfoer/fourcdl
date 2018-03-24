@@ -14,29 +14,26 @@ def setup_thread_for_download(setup_tmpdir):
     tmpdir = setup_tmpdir
     dl_thread_files_path = os.path.join(TESTS_DIR, "dl_thread_files")
     # only needed to do this ONCE now we can just import from import_e.json
-    # state_dict = import_json(os.path.join(dl_thread_files_path, "import.json"))
-    # to_dl, successful_dl_threads = state_dict["dl_multiple_threads"]
-    # thread, dl_list = to_dl[0]
+    # better to leave it since it only works if the file path of the test files doesnt change
+    state_dict = import_json(os.path.join(dl_thread_files_path, "import.json"))
+    to_dl, successful_dl_threads = state_dict["dl_multiple_threads"]
+    thread, dl_list = to_dl[0]
 
 
-    # b64_of_files_to_dl = set()
-    # # change file_urls to use file:///
-    # for k, post_dict in thread.items():
-    #     if k == "OP":
-    #         continue
+    b64_of_files_to_dl = set()
+    # change file_urls to use file:///
+    for k, post_dict in thread.items():
+        if k == "OP":
+            continue
 
-    #     file_info_d = post_dict["file_info"]
-    #     # file_info_d can be None
-    #     if file_info_d and file_info_d["to_download"]:
-    #         # CAREFUL download thread doesnt use file_url it uses normal url and prepends https:
-    #         file_info_d["file_url"] = "file:" + urllib.request.pathname2url(os.path.join(dl_thread_files_path,
-    #             f"{file_info_d['dl_filename']}.{file_info_d['file_ext']}"))
-    #         # add md5b64 to later remove them from files info dict since they were added when being downloaded
-    #         b64_of_files_to_dl.add(file_info_d["file_md5_b64"])
-
-    # # just exporting thread and dl_list is enough
-    # export_json(os.path.join(dl_thread_files_path, "import_e.json"), (thread,dl_list))
-    thread, dl_list = import_json(os.path.join(dl_thread_files_path, "import_e.json"))
+        file_info_d = post_dict["file_info"]
+        # file_info_d can be None
+        if file_info_d and file_info_d["to_download"]:
+            # CAREFUL download thread doesnt use file_url it uses normal url and prepends https:
+            file_info_d["file_url"] = "file:" + urllib.request.pathname2url(os.path.join(dl_thread_files_path,
+                f"{file_info_d['dl_filename']}.{file_info_d['file_ext']}"))
+            # add md5b64 to later remove them from files info dict since they were added when being downloaded
+            b64_of_files_to_dl.add(file_info_d["file_md5_b64"])
 
     # copy root md5 file
     shutil.copy2(os.path.join(dl_thread_files_path, "4chan_dl.md5"), os.path.join(tmpdir))
