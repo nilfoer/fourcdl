@@ -444,61 +444,35 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
 
             print("Stopped watching clipboard for 4chan file urls!")
             running = False
-        # must be executed if the try clause does not raise an exception
-        # so we dont process the file_url from b4 when we stop watching clip
         else:
             if is_4ch_file_url(recent_value):
                 # remove https?: from start of url, better to use address without http/https since the copies differ with/without 4chan x -> or just make sure that its https: by replacing match with https:
                 file_url = re.sub(remove_https_re, "https:", recent_value)
 
-                # file_url alrdy processed? -> skip.. or use as possibility to rename -> to rename just get rid of this if
-                # if file_url not in dl_list:
                 # report on final filename if there was a prev file
                 if file_post_dict:
                     if file_post_dict["file_info"]["to_download"]:
                         logger.info("File will be downloaded as \"%s.%s\"", file_post_dict["file_info"]["dl_filename"], file_post_dict["file_info"]["file_ext"])
                     elif not file_post_dict["file_info"]["unique"]:
                         file_url_old = file_post_dict["file_info"]["file_url"]
-                        logger.info("File %s wasnt unique and therefore wasnt added to the download list!",
-                                file_post_dict["file_info"]["dl_filename"])
+                        # may have removed file alrdy so use orig-fn oder 4ch fn
+                        logger.info("File with orig. filename %s wasnt unique and therefore wasnt "
+                                    "added to the download list!", file_post_dict["file_info"]["file_name_orig"])
                         # remove on set raises KeyError when item not present -> discard(x) doesnt
-                        dl_list.remove(file_url_old)
+                        # might have removed file with remove_file alrdy -> use discard
+                        dl_list.discard(file_url_old)
 
                         # dl_filename key only gets created once added to dls -> remove it
-                        del file_post_dict["file_info"]["dl_filename"]
+                        # might have removed dl_filename with cmd remove_file
+                        try:
+                            del file_post_dict["file_info"]["dl_filename"]
+                        except KeyError:
+                            pass
                 if file_url in dl_list:
                     logger.info("File name of %s has been RESET!!!", file_url.split("/")[-1])
 
-                try:
-                    file_post_dict = thread[file_url]
-                except KeyError:
-                    file_post_dict = None
-                    print(f"File of url \"{file_url}\" was not found in the thread!")
-                # only proceed if file_url is in dict/thread
-                else:
-                    # add file_url (without http part) of file post to dl list and set to_download
-                    dl_list.add(file_url)
-                    file_post_dict["file_info"]["to_download"] = True
-                    # set dl_filename 
-                    file_post_dict["file_info"]["dl_filename"]= file_post_dict['file_info']['file_name_4ch']
-                    logger.info("Found file url of file: \"%s\" Total of %s files", 
-                            file_url.replace("//i.4cdn.org/", ""), len(dl_list))
-                    print("Orig-fn:", file_post_dict["file_info"]["file_name_orig"])
+                file_post_dict = add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique_only)
 
-                    if unique_only:
-                        # cant use get_url_file_size here since it might take multiple seconds
-                        # use value available in 4chan file_info
-                        size = convert_4chan_file_size(file_post_dict["file_info"]["file_size"])
-                        # if not unique/not alrdy dled -> alert user -> possibilty to manually remove it
-                        if not file_unique_converted(files_info_dict, 
-                                file_post_dict["file_info"]["file_ext"], size,
-                                file_post_dict["file_info"]["file_md5_b64"]):
-                            file_post_dict["file_info"]["unique"] = False
-                            file_post_dict["file_info"]["to_download"] = False
-                            logger.info("ALERT!! File with url %s has been downloaded before! "
-                                        "Copy add_anyway to add file to downloads!", file_url)
-                        else:
-                            file_post_dict["file_info"]["unique"] = True
             elif recent_value == "rename_thread":
                 # option to set new folder name when rename_thread is copied
                 folder_name = input("Input new folder name:\n")
@@ -506,39 +480,77 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
                 print(f"Renamed thread folder to {folder_name}")
                 
             elif file_post_dict:
-                # sanitize filename for windows, src: https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string by wallyck
-                # if after for..in is part of comprehension syntax <-> if..else b4 for..in is pythons equivalent of ternary operator
-                # only keep chars if theyre alphanumerical (a-zA-Z0-9) or in the tuple (' ', '_'), replace rest with _
-                # reset file name to 4ch name when reset_filename is copied
-                if recent_value == "reset_filename":
-                    file_post_dict["file_info"]["dl_filename"]= file_post_dict['file_info']['file_name_4ch']
-                    print("Filename has been reset!")
-                elif recent_value == "add_anyway":
-                    file_post_dict["file_info"]["to_download"] = True
-                    logger.info("File \"%s\" was added to download_list even though it wasnt unique!",
-                            file_post_dict["file_info"]["dl_filename"])
-                elif recent_value == "remove_file":
-                    logger.info("Removing file with filename \"%s\" from download list", file_post_dict["file_info"]["dl_filename"])
-                    file_url = file_post_dict["file_info"]["file_url"]
-                    # remove on set raises KeyError when item not present -> discard(x) doesnt
-                    dl_list.remove(file_url)
-
-                    file_post_dict["file_info"]["to_download"] = False
-                    # dl_filename key only gets created once added to dls -> remove it
-                    del file_post_dict["file_info"]["dl_filename"]
-                    file_post_dict = None
-                    logger.info("New total file count: %s", len(dl_list))
-                else:
-                    sanitized_clip = sanitize_fn(recent_value)
-
-                    dl_filename = f"{file_post_dict['file_info']['dl_filename']}_{sanitized_clip}"
-                    file_post_dict["file_info"]["dl_filename"] = dl_filename
-                    print(f"Not a file url -> clipboard was appended to filename: \"{dl_filename}\"")
+                modify_current_file(file_post_dict, dl_list, recent_value)
 
     # since were working on thread directly and its a mutable type(dict) we dont have
     # to return (but mb more readable)
-    # create set to remove duplicates, back to list -> json serializable
-    return list(set(dl_list))
+    # to list -> json serializable
+    return list(dl_list)
+
+
+def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique_only):
+    try:
+        file_post_dict = thread[file_url]
+    except KeyError:
+        file_post_dict = None
+        print(f"File of url \"{file_url}\" was not found in the thread!")
+    # only proceed if file_url is in dict/thread
+    else:
+        # add file_url (without http part) of file post to dl list and set to_download
+        dl_list.add(file_url)
+        file_post_dict["file_info"]["to_download"] = True
+        file_post_dict["file_info"]["dl_filename"]= file_post_dict['file_info']['file_name_4ch']
+
+        logger.info("Found file url of file: \"%s\" Total of %s files", 
+                file_url.replace("//i.4cdn.org/", ""), len(dl_list))
+        print("Orig-fn:", file_post_dict["file_info"]["file_name_orig"])
+
+        if unique_only:
+            # cant use get_url_file_size here since it might take multiple seconds
+            # use value available in 4chan file_info
+            size = convert_4chan_file_size(file_post_dict["file_info"]["file_size"])
+            # if not unique/not alrdy dled -> alert user and set to not dl
+            if not file_unique_converted(files_info_dict, 
+                    file_post_dict["file_info"]["file_ext"], size,
+                    file_post_dict["file_info"]["file_md5_b64"]):
+                file_post_dict["file_info"]["unique"] = False
+                file_post_dict["file_info"]["to_download"] = False
+                logger.info("ALERT!! File with url %s has been downloaded before! "
+                            "Copy add_anyway to add file to downloads!", file_url)
+            else:
+                file_post_dict["file_info"]["unique"] = True
+
+    return file_post_dict
+
+def modify_current_file(file_post_dict, dl_list, cmd):
+    # sanitize filename for windows, src: https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string by wallyck
+    # if after for..in is part of comprehension syntax <-> if..else b4 for..in is pythons equivalent of ternary operator
+    # only keep chars if theyre alphanumerical (a-zA-Z0-9) or in the tuple (' ', '_'), replace rest with _
+    # reset file name to 4ch name when reset_filename is copied
+    if cmd == "reset_filename":
+        file_post_dict["file_info"]["dl_filename"]= file_post_dict['file_info']['file_name_4ch']
+        print("Filename has been reset!")
+    elif cmd == "add_anyway":
+        file_post_dict["file_info"]["to_download"] = True
+        logger.info("File \"%s\" was added to download_list even though it wasnt unique!",
+                file_post_dict["file_info"]["dl_filename"])
+    elif cmd == "remove_file":
+        logger.info("Removing file with filename \"%s\" from download list", file_post_dict["file_info"]["dl_filename"])
+        file_url = file_post_dict["file_info"]["file_url"]
+        # remove on set raises KeyError when item not present -> discard(x) doesnt
+        dl_list.remove(file_url)
+
+        file_post_dict["file_info"]["to_download"] = False
+        # dl_filename key only gets created once added to dls -> remove it
+        del file_post_dict["file_info"]["dl_filename"]
+        file_post_dict = None
+        logger.info("New total file count: %s", len(dl_list))
+    else:
+        sanitized_clip = sanitize_fn(cmd)
+
+        dl_filename = f"{file_post_dict['file_info']['dl_filename']}_{sanitized_clip}"
+        file_post_dict["file_info"]["dl_filename"] = dl_filename
+        print(f"Not a file url -> clipboard was appended to filename: \"{dl_filename}\"")
 
 
 def sanitize_fn(name):
