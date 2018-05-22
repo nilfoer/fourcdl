@@ -19,8 +19,8 @@ def setup_thread_for_handled_failed_md5():
     thread, dl_list = to_dl[0]
     # fourchandl now uses https://.. as key but these tests are still valid since
     # the json still uses these all over and nothing gets dled here
-    thread["failed_md5"] = ["//i.4cdn.org/v/1521370213050.png", "//i.4cdn.org/v/1521370986708.jpg",
-            "//i.4cdn.org/v/1521372959414.png"]
+    thread["failed_md5"] = ["v/1521370213050.png", "v/1521370986708.jpg",
+                            "v/1521372959414.png"]
 
     # use "" as last join to make sure tmpdir_failed_md5 ends in os.sep so it gets treated as 
     # dir path and not as file path -> copy2 used it as filename before (but only when dir didnt exist yet -> worked when dir existed)

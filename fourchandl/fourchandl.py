@@ -117,7 +117,7 @@ def get_file_info(post):
                 "file_name_orig": file_name_orig,
                 "file_size": file_size,
                 "file_res": file_res,
-                "file_thumb_url": file_thumb["src"],
+                "file_thumb_url": f"https:{file_thumb['src']}",
                 "file_md5_b64": file_thumb["data-md5"],
                 "to_download": False,
                 "downloaded": False
@@ -171,6 +171,11 @@ def get_op(soup):
     return thread_nr, subj, post_msg, utc
 
 
+FILE_URL_TO_KEY = re.compile(r"^(https?:)?\/\/[a-z0-9]+\.(4cdn|4chan)\.org\/")
+def get_key_from_furl(url):
+    return re.sub(FILE_URL_TO_KEY, "", url)
+
+
 remove_https_re = re.compile("^https?:")
 
 # ich machs jetzt wie ichs von casey(handmade hero) gelernt habe: "always write your usage code first!"
@@ -206,7 +211,10 @@ def get_thread_from_html(html):
         # also use fileurl if post hast file as key to point to post_dict
         # works since its a mutable: https://stackoverflow.com/questions/10123853/how-do-i-make-a-dictionary-with-multiple-keys-to-one-value
         if file_info:
-            thread[file_info["file_url"]] = post_dict
+            # since files may be on different servers remove main domain part
+            # (https://i.4cdn.org/ or https://is2.4chan.org/)
+            file_url_key = get_key_from_furl(file_info["file_url"])
+            thread[file_url_key] = post_dict
     thread = generate_backlinks(thread)
     return thread
 
@@ -355,7 +363,7 @@ def is_4ch_thread_url(url):
         return False
 
 
-file_url_4ch_re = re.compile(r"(https?:)?\/\/i\.4cdn\.org\/[a-z]+\/(\d+)\.(\w+)")
+file_url_4ch_re = re.compile(r"(https?:)?\/\/[a-z0-9]+\.(4cdn|4chan)\.org\/[a-z]+\/(\d+)\.[\w\d]+")
 def is_4ch_file_url(url):
     if re.match(file_url_4ch_re, url):
         return True
@@ -428,7 +436,7 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
                 if file_post_dict["file_info"]["to_download"]:
                     logger.info("File will be downloaded as \"%s.%s\"", file_post_dict["file_info"]["dl_filename"], file_post_dict["file_info"]["file_ext"])
                 elif not file_post_dict["file_info"]["unique"]:
-                    file_url = file_post_dict["file_info"]["file_url"]
+                    file_url = get_key_from_furl(file_post_dict["file_info"]["file_url"])
                     logger.info("File %s wasnt unique and therefore wasnt added to the download list!",
                             file_post_dict["file_info"]["dl_filename"])
                     # remove on set raises KeyError when item not present -> discard(x) doesnt
@@ -447,14 +455,18 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
         else:
             if is_4ch_file_url(recent_value):
                 # remove https?: from start of url, better to use address without http/https since the copies differ with/without 4chan x -> or just make sure that its https: by replacing match with https:
-                file_url = re.sub(remove_https_re, "https:", recent_value)
+                # better remove whole main domain part since files might be on different servers
+                # but we always want to dl from i.4cdn.org later since its faster (as stated by 4chan x)
+                file_url = get_key_from_furl(recent_value)
 
                 # report on final filename if there was a prev file
                 if file_post_dict:
                     if file_post_dict["file_info"]["to_download"]:
                         logger.info("File will be downloaded as \"%s.%s\"", file_post_dict["file_info"]["dl_filename"], file_post_dict["file_info"]["file_ext"])
                     elif not file_post_dict["file_info"]["unique"]:
-                        file_url_old = file_post_dict["file_info"]["file_url"]
+                        # TODO(moe): this seems complicated -> better to not use dl_list at all and just work
+                        # with to_dl in dict etc.
+                        file_url_old = get_key_from_furl(file_post_dict["file_info"]["file_url"])
                         # may have removed file alrdy so use orig-fn oder 4ch fn
                         logger.info("File with orig. filename %s wasnt unique and therefore wasnt "
                                     "added to the download list!", file_post_dict["file_info"]["file_name_orig"])
@@ -502,7 +514,7 @@ def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique
         file_post_dict["file_info"]["dl_filename"]= file_post_dict['file_info']['file_name_4ch']
 
         logger.info("Found file url of file: \"%s\" Total of %s files", 
-                file_url.replace("//i.4cdn.org/", ""), len(dl_list))
+                    file_url, len(dl_list))
         print("Orig-fn:", file_post_dict["file_info"]["file_name_orig"])
 
         if unique_only:
@@ -522,6 +534,7 @@ def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique
 
     return file_post_dict
 
+
 def modify_current_file(file_post_dict, dl_list, cmd):
     # sanitize filename for windows, src: https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string by wallyck
     # if after for..in is part of comprehension syntax <-> if..else b4 for..in is pythons equivalent of ternary operator
@@ -536,7 +549,7 @@ def modify_current_file(file_post_dict, dl_list, cmd):
                 file_post_dict["file_info"]["dl_filename"])
     elif cmd == "remove_file":
         logger.info("Removing file with filename \"%s\" from download list", file_post_dict["file_info"]["dl_filename"])
-        file_url = file_post_dict["file_info"]["file_url"]
+        file_url = get_key_from_furl(file_post_dict["file_info"]["file_url"])
         # remove on set raises KeyError when item not present -> discard(x) doesnt
         dl_list.remove(file_url)
 
@@ -697,6 +710,12 @@ def download_4chan_file_url(url, dl_path, file_dict, files_info_dict, overwrite=
     return dl_success, md5_match
 
 
+# build url to file so we dont use the specified server in the file_url
+# but the faster i.4cdn.org
+def build_url_to_file(file_url, server="i.4cdn.org"):
+    return f"https://{server}/{get_key_from_furl(file_url)}"
+
+
 def download_thread(thread, dl_list, files_info_dict, root_dir, overwrite=False):
     # keep list of successful dls so we only export those in export str
     success_dl = []
@@ -709,7 +728,12 @@ def download_thread(thread, dl_list, files_info_dict, root_dir, overwrite=False)
     for url in dl_list:
         file_dict = thread[url]["file_info"]
         dl_path = os.path.join(thread_folder, f"{file_dict['dl_filename']}.{file_dict['file_ext']}")
-        file_url = file_dict["file_url"]
+        # TODO(moe): when downloading from better server fails, try the one in file_url
+        # file_url = file_dict["file_url"]
+        # have to derive url from file_url in dict otherwise we lose ability
+        # to use local file:/// urls for tests, and i wanna get rid of dl_list eventually
+        file_url = build_url_to_file(file_dict["file_url"])
+
         logger.info("Downloading: \"%s\", File %s of %s", url, cur_nr, nr_files_thread)
         try:
             dl_success, md5_match = download_4chan_file_url(file_url, dl_path, file_dict, files_info_dict, overwrite=overwrite)
@@ -951,10 +975,10 @@ def resume_from_state_dict(state_dict, files_info_dict, root_dir):
 def recreate_dl_list(thread):
     result = []
     for k, post_dict in thread.items():
-        if "//" in k:
+        if "/" in k:
             try:
                 if post_dict["file_info"]["to_download"]:
-                    result.append(post_dict["file_info"]["file_url"])
+                    result.append(get_key_from_furl(post_dict["file_info"]["file_url"]))
             except KeyError:
                 pass
 

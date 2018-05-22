@@ -78,15 +78,17 @@ def setup_thread_for_download(setup_tmpdir):
 
     
 
-def test_download_thread(setup_thread_for_download):
+def test_download_thread(setup_thread_for_download, monkeypatch):
     tmpdir, dl_thread_files_path, thread, dl_list, files_info_dict = setup_thread_for_download
+    # just return file_url
+    monkeypatch.setattr("fourchandl.fourchandl.build_url_to_file", lambda x: x)
 
     # test every time root md5 and export txt being correct
     # test with one or 2 failed md5s -> check if reported correctly and that havent been added to files_info_dict
     # fail md5 on: 1521372891045_failed_md5
     # test dl fail -> not added to export txt, md5 and files_info_dict
     # on 1521370213050_dl_fail should work by just changing file url since were expceping URLError in download
-    thread["//i.4cdn.org/v/1521370213050.png"]["file_info"]["file_url"] = "file:" + urllib.request.pathname2url(
+    thread["v/1521370213050.png"]["file_info"]["file_url"] = "file:" + urllib.request.pathname2url(
             os.path.join(dl_thread_files_path, "file_not_found.jpg"))
 
     failed_md5 = download_thread(thread, dl_list, files_info_dict, root_dir = tmpdir)
@@ -99,7 +101,7 @@ def test_download_thread(setup_thread_for_download):
         fn = thread[url]["file_info"]["dl_filename"] + "." + thread[url]["file_info"]["file_ext"]
         isfile = os.path.isfile(os.path.join(tmpdir, "dl_thread_files", fn))
 
-        if url == "//i.4cdn.org/v/1521370213050.png":
+        if url == "v/1521370213050.png":
             # make sure file that had faulty url wasnt downloaded
             assert(not isfile)
         else:
