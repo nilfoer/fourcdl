@@ -492,7 +492,7 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
                 print(f"Renamed thread folder to {folder_name}")
                 
             elif file_post_dict:
-                modify_current_file(file_post_dict, dl_list, recent_value)
+                file_post_dict = modify_current_file(file_post_dict, dl_list, recent_value)
 
     # since were working on thread directly and its a mutable type(dict) we dont have
     # to return (but mb more readable)
@@ -511,7 +511,7 @@ def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique
         # add file_url (without http part) of file post to dl list and set to_download
         dl_list.add(file_url)
         file_post_dict["file_info"]["to_download"] = True
-        file_post_dict["file_info"]["dl_filename"]= file_post_dict['file_info']['file_name_4ch']
+        file_post_dict["file_info"]["dl_filename"] = file_post_dict['file_info']['file_name_4ch']
 
         logger.info("Found file url of file: \"%s\" Total of %s files", 
                     file_url, len(dl_list))
@@ -541,14 +541,15 @@ def modify_current_file(file_post_dict, dl_list, cmd):
     # only keep chars if theyre alphanumerical (a-zA-Z0-9) or in the tuple (' ', '_'), replace rest with _
     # reset file name to 4ch name when reset_filename is copied
     if cmd == "reset_filename":
-        file_post_dict["file_info"]["dl_filename"]= file_post_dict['file_info']['file_name_4ch']
+        file_post_dict["file_info"]["dl_filename"] = file_post_dict['file_info']['file_name_4ch']
         print("Filename has been reset!")
     elif cmd == "add_anyway":
         file_post_dict["file_info"]["to_download"] = True
         logger.info("File \"%s\" was added to download_list even though it wasnt unique!",
                 file_post_dict["file_info"]["dl_filename"])
     elif cmd == "remove_file":
-        logger.info("Removing file with filename \"%s\" from download list", file_post_dict["file_info"]["dl_filename"])
+        logger.info("Removing file with filename \"%s\" from download list",
+                    file_post_dict["file_info"]["dl_filename"])
         file_url = get_key_from_furl(file_post_dict["file_info"]["file_url"])
         # remove on set raises KeyError when item not present -> discard(x) doesnt
         dl_list.remove(file_url)
@@ -556,6 +557,10 @@ def modify_current_file(file_post_dict, dl_list, cmd):
         file_post_dict["file_info"]["to_download"] = False
         # dl_filename key only gets created once added to dls -> remove it
         del file_post_dict["file_info"]["dl_filename"]
+        # this caused a crash since this was assigning None to the local var
+        # instead of the var in outer scope (watch_for_file_urls)
+        # still assumes we have a current file -> copy non-furl -> crash since
+        # fname key doesnt exist -> fix: return local var and assign in outer scope
         file_post_dict = None
         logger.info("New total file count: %s", len(dl_list))
     else:
@@ -564,6 +569,8 @@ def modify_current_file(file_post_dict, dl_list, cmd):
         dl_filename = f"{file_post_dict['file_info']['dl_filename']}_{sanitized_clip}"
         file_post_dict["file_info"]["dl_filename"] = dl_filename
         print(f"Not a file url -> clipboard was appended to filename: \"{dl_filename}\"")
+
+    return file_post_dict
 
 
 def sanitize_fn(name):
