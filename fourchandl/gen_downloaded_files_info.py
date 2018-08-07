@@ -37,6 +37,7 @@ class JSONSetEncoder(json.JSONEncoder):
         else:
             return json.JSONEncoder.default(self, obj)
 
+
 def json_as_python_set(dct):
     """Decode json {'_set_object': [1,2,3]} to set([1,2,3])
 
@@ -54,6 +55,8 @@ def json_as_python_set(dct):
 
 VALID_FILE_EXT = ("webm", "gif", "jpg", "png")
 DIR_SUBSTR_EXCLUDE = (".git", "_files", "-Dateien", "fourchandl")
+SIZE_DIV = 1024*1024
+ROUND_DECS = 2
 def generate_downloaded_files_info(root_dir):
     files_info = {ext: {} for ext in VALID_FILE_EXT}
     for dirpath, dirnames, fnames in os.walk(root_dir):
@@ -72,8 +75,11 @@ def generate_downloaded_files_info(root_dir):
                 continue
 
             full_path = os.path.join(dirpath, fn)
+            rel_path = os.path.normpath(os.path.relpath(full_path, start=root_dir))
             # output in bytes
             fsize = os.path.getsize(full_path)
+            # convert and round size so we dont have too many entries
+            fsize = round(fsize/SIZE_DIV, ROUND_DECS)
             # convert binary output of md5 to b64 -> used later to compare it to 4chan md5 which is stored in b64 encoded ascii string
             # -> its byte string/array then
             # A string is already 'decoded', thus the str class has no 'decode' function.Thus:
@@ -114,9 +120,20 @@ def generate_downloaded_files_info(root_dir):
 
                 # with 5600 files -> only 114 sets with more than one member (->having same fsize)
                 # re: "[0-9a-zA-Z/+]+==",
-                files_info[ext][fsize].add(md5_b64)
+                md5_b64_dict = files_info[ext][fsize]
             except KeyError:
-                files_info[ext][fsize] = set((md5_b64,))
+                # dict for fsize doesnt exist yet
+                files_info[ext][fsize] = {md5_b64: [rel_path]}
+            else:
+                # we assigned the md5_b64_dict successfully
+                # -> append to/create list
+                # if we caught an exception above we already created the
+                # list!
+                try:
+                    md5_b64_dict[md5_b64].append(rel_path)
+                except KeyError:
+                    # md5_b64 entry doesnt exist yet
+                    md5_b64_dict[md5_b64] = [rel_path]
 
     return files_info
 
@@ -156,53 +173,61 @@ def import_files_info_json(filename):
     return files_info
 
 
-def adjust_sizes(files_info, div, dec=0):
-    result = {}
-    for e in VALID_FILE_EXT:
-        # using dict comprehension overwrites old values if key was alrdy present
-        # -> use normal for loop
-        edic = {}
-        for size, val in files_info[e].items():
-            new_size = size/div if dec is None else round(size/div, dec)
-            # val is alrdy set -> union(new set->contains values from both) or assign if key not in dict yet
-            try:
-                edic[new_size] = edic[new_size] | val
-            except KeyError:
-                edic[new_size] = val
-        result[e] = edic
+def convert_4chan_file_size(fsize_str):
+    result = None
+    amount, unit = fsize_str.split(" ")
+    if unit == "KB":
+       result = round(int(amount)/1024, 2)
+    elif unit == "MB":
+        result = float(amount)
+    else:
+        logger.error("Couldnt convert 4chan file size string \"%s\"", fsize_str)
     return result
 
 
-SIZE_DIV = 1024*1024
-ROUND_DECS = 2
-def file_unique(files_info_dict, f_type, size_bytes, md5_b64, add_if_unique=False):
-    size = round(size_bytes/SIZE_DIV, ROUND_DECS)
-
+def file_unique_converted(files_info_dict, f_type, size, md5_b64, print_flist=False):
+    """
+    Expects file size in MB with 2 decs
+    """
     try:
-        unique = md5_b64 not in files_info_dict[f_type][size]
-    except KeyError:
-        unique = True
-    if unique and add_if_unique:
-        add_file_to_files_info(files_info_dict, f_type, size_bytes, md5_b64)
-    return unique
-
-
-def file_unique_converted(files_info_dict, f_type, size, md5_b64):
-    try:
-        unique = md5_b64 not in files_info_dict[f_type][size]
+        flist = files_info_dict[f_type][size][md5_b64]
+        unique = False
+        if print_flist:
+            print("Files with matching md5s:")
+            print("\n".join(flist))
     except KeyError:
         unique = True
 
     return unique
-    
-    
-def add_file_to_files_info(files_info_dict, f_type, size_bytes, md5_b64):
+
+
+def add_file_to_files_info(files_info_dict, f_type, size_bytes, md5_b64, file_path):
+    """
+    Adds md5 as b64 encoded ASCII string to files_info_dict and appends
+    the file_path of the file starting from root(cwd/sys.argv[0]) dir to
+    the list/creates it
+    :param files_info_dict: Dict containing other dicts for extenstion->size in
+                            MB rounded to 2 decimals[md5_b64]: list of file paths
+    :param f_type: File extension
+    :param size_bytes: Size of file in bytes
+    :param md5_b64: ASCII representation of b64 encoded md5 checksum
+    :param file_path: Path to file relative to root dir
+    """
     size = round(size_bytes/SIZE_DIV, ROUND_DECS)
+    file_path = os.path.normpath(file_path)
     try:
-        files_info_dict[f_type][size].add(md5_b64)
+        md5_b64_dict = files_info_dict[f_type][size]
     except KeyError:
-        files_info_dict[f_type][size] = set((md5_b64,))
-    logger.debug("Added file with md5_b64 %s to files_info", md5_b64)
+        # dict for size doesnt exist yet
+        files_info_dict[f_type][size] = {md5_b64: [file_path]}
+    else:
+        # we assigned the md5_b64_dict successfully
+        try:
+            md5_b64_dict[md5_b64].append(file_path)
+        except KeyError:
+            # md5_b64 entry doesnt exist yet
+            md5_b64_dict[md5_b64] = [file_path]
+    logger.debug("Added file %s with md5_b64 %s to files_info", file_path, md5_b64)
 
 
 # def main():

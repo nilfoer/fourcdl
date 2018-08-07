@@ -12,7 +12,7 @@ import bs4
 import pyperclip
 
 from fourchandl.logging_setup import configure_logging
-from fourchandl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, export_files_info_pickle, add_file_to_files_info, generate_downloaded_files_info, SIZE_DIV, ROUND_DECS, adjust_sizes
+from fourchandl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, export_files_info_pickle, add_file_to_files_info, generate_downloaded_files_info, convert_4chan_file_size
 from fourchandl.crc import md5, convert_b64str_to_hex, check_4chfile_crc
 
 logger = logging.getLogger(__name__)
@@ -383,18 +383,6 @@ def get_new_clipboard(recent):
         return None
 
 
-def convert_4chan_file_size(fsize_str):
-    result = None
-    amount, unit = fsize_str.split(" ")
-    if unit == "KB":
-       result = round(int(amount)/1024, 2)
-    elif unit == "MB":
-        result = float(amount)
-    else:
-        logger.error("Couldnt convert 4chan file size string \"%s\"", fsize_str)
-    return result
-
-
 def get_all_file_urls_thread(thread, unique_only, files_info_dict):
     all_file_urls_thread = []
     for u in thread.keys():
@@ -524,7 +512,8 @@ def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique
             # if not unique/not alrdy dled -> alert user and set to not dl
             if not file_unique_converted(files_info_dict, 
                     file_post_dict["file_info"]["file_ext"], size,
-                    file_post_dict["file_info"]["file_md5_b64"]):
+                    file_post_dict["file_info"]["file_md5_b64"],
+                    print_flist=True):
                 file_post_dict["file_info"]["unique"] = False
                 file_post_dict["file_info"]["to_download"] = False
                 logger.info("ALERT!! File with url %s has been downloaded before! "
@@ -694,9 +683,12 @@ def download_with_retries_crc(url, dl_path, md5_b64, retries=1):
 
 
 RETRIES = 1
-def download_4chan_file_url(url, dl_path, file_dict, files_info_dict, overwrite=False,
-        retries=RETRIES):
+def download_4chan_file_url(url, dl_path, file_dict, files_info_dict, thread,
+                            overwrite=False, retries=RETRIES):
     dl_success, md5_match = None, None
+
+    file_loc = os.path.join(thread["OP"]["folder_name"],
+                            f"{file_dict['dl_filename']}.{file_dict['file_ext']}")
 
     if not os.path.isfile(dl_path) or overwrite:
         dl_success, md5_match, headers = download_with_retries_crc(url, dl_path, 
@@ -707,7 +699,8 @@ def download_4chan_file_url(url, dl_path, file_dict, files_info_dict, overwrite=
         # that file before then removing it would be wrong
         if dl_success and md5_match:
             add_file_to_files_info(files_info_dict, file_dict["file_ext"], 
-                    int(headers["Content-Length"]), file_dict["file_md5_b64"])
+                    int(headers["Content-Length"]), file_dict["file_md5_b64"],
+                    file_loc)
         else:
             logger.warning("Download of %s failed after %s tries - File was skipped!", url, 
                     retries+1)
@@ -743,7 +736,9 @@ def download_thread(thread, dl_list, files_info_dict, root_dir, overwrite=False)
 
         logger.info("Downloading: \"%s\", File %s of %s", url, cur_nr, nr_files_thread)
         try:
-            dl_success, md5_match = download_4chan_file_url(file_url, dl_path, file_dict, files_info_dict, overwrite=overwrite)
+            dl_success, md5_match = download_4chan_file_url(file_url, dl_path, file_dict,
+                                                            files_info_dict, thread,
+                                                            overwrite=overwrite)
 
             if dl_success:
                 # we even keep files with failed md5 -> user hast to check them manually first if theyre worth keeping or useless
@@ -1051,8 +1046,6 @@ def main():
             raise
     elif cmd_line_arg1 == "gen_info":
         files_info_dict = generate_downloaded_files_info(ROOTDIR)
-        files_info_dict = adjust_sizes(files_info_dict, SIZE_DIV, dec=ROUND_DECS)
-
 
     # always write udated files_info after script is done
     export_files_info_pickle(files_info_dict, os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
