@@ -1,0 +1,28 @@
+{
+
+  "description": "Co-app for fourchandl",
+  "manifest_version": 2,
+  "name": "4chanDL Companion-App",
+  "version": "0.1",
+  "icons": {
+    "48": "ico/fourchandl.png"
+  },
+
+  "applications": {
+    "gecko": {
+      "id": "fourchandl_companion@example.org",
+      "strict_min_version": "50.0"
+    }
+  },
+
+  "background": {
+    "scripts": ["fourchandl_co.js"]
+  },
+
+  "browser_action": {
+    "default_icon": "ico/fourchandl.png"
+  },
+ 
+  "permissions": ["nativeMessaging", "activeTab"]
+
+}
