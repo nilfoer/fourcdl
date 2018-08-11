@@ -14,6 +14,12 @@
 import json
 import sys
 import struct
+import os
+
+from fourchandl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, convert_4chan_file_size
+
+DOWNLOADED_FILES_INFO = r"N:\_archive\test\4c\downloaded_files_info.pickle"
+ROOTDIR = os.path.abspath(os.path.dirname(__file__))
 
 # If the native application sends any output to stderr, the browser will redirect it to the browser console.
 # -> use this for debugging
@@ -43,5 +49,15 @@ def sendMessage(encodedMessage):
 
 while True:
     receivedMessage = getMessage()
-    if receivedMessage == "ping":
-        sendMessage(encodeMessage("pong3"))
+    # data in stdout has to follow nativeMessaging protocol so for debugging write to stderr
+    print('To stderr.', file=sys.stderr)
+    # with open(os.path.join(ROOTDIR, "o.txt"), "a", encoding="utf-8") as w:
+    #     w.write(receivedMessage)
+    if isinstance(receivedMessage, list):
+        res = []
+        for fid, fsize_str, md5 in receivedMessage:
+            converted = convert_4chan_file_size(fsize_str)
+            res.append([md5,converted,fid])
+        sendMessage(encodeMessage(res))
+    elif receivedMessage:
+        sendMessage(encodeMessage(["Received: ", receivedMessage]))
