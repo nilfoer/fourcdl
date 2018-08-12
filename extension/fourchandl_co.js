@@ -13,7 +13,7 @@ If a handler returns a promise (makes another asynchronous request), then the ne
 function messageTab(msg, tabs) {
     // use tabs.sendMessage() to send a message to the content scripts loaded into that tab
     browser.tabs.sendMessage(tabs[0].id, {
-        replacement: msg
+        uniques: msg
     });
 }
 
@@ -49,10 +49,10 @@ function sendResponseToActiveTab(msg) {
 }
 
 function sendNativeMsg(req) {
-    console.log("From conentjs: " + req.id_md5b64);
+    console.log("From conentjs: " + req.file_info);
     var sending = browser.runtime.sendNativeMessage(
         "fourchandl",
-        req.id_fs_md5b64);
+        req.file_info);
     sending.then(onResponse, onError);
 }
 

@@ -18,7 +18,7 @@ import os
 
 from fourchandl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, convert_4chan_file_size
 
-DOWNLOADED_FILES_INFO = r"N:\_archive\test\4c\downloaded_files_info.pickle"
+DOWNLOADED_FILES_INFO_PATH = r"N:\_archive\test\4c\downloaded_files_info.pickle"
 ROOTDIR = os.path.abspath(os.path.dirname(__file__))
 
 # If the native application sends any output to stderr, the browser will redirect it to the browser console.
@@ -47,17 +47,21 @@ def sendMessage(encodedMessage):
     sys.stdout.buffer.write(encodedMessage['content'])
     sys.stdout.buffer.flush()
 
-while True:
-    receivedMessage = getMessage()
-    # data in stdout has to follow nativeMessaging protocol so for debugging write to stderr
-    print('To stderr.', file=sys.stderr)
-    # with open(os.path.join(ROOTDIR, "o.txt"), "a", encoding="utf-8") as w:
-    #     w.write(receivedMessage)
-    if isinstance(receivedMessage, list):
-        res = []
-        for fid, fsize_str, md5 in receivedMessage:
-            converted = convert_4chan_file_size(fsize_str)
-            res.append([md5,converted,fid])
-        sendMessage(encodeMessage(res))
-    elif receivedMessage:
-        sendMessage(encodeMessage(["Received: ", receivedMessage]))
+def main():
+    # TODO(moe): change to connection-based so we dont have to always reimport a 7mb+ file
+    downloaded_files_info = import_files_info_pickle(DOWNLOADED_FILES_INFO_PATH)
+    while True:
+        receivedMessage = getMessage()
+        # data in stdout has to follow nativeMessaging protocol so for debugging write to stderr
+        # receiving stderr in browser still doesnt work for me
+        # print('To stderr.', file=sys.stderr)
+        if isinstance(receivedMessage, list):
+            uniques = []
+            for fid, fname, fsize_str, md5 in receivedMessage:
+                converted = convert_4chan_file_size(fsize_str)
+                f_type = fname.strip().rsplit(".", 1)[1]
+                if file_unique_converted(downloaded_files_info, f_type, converted, md5):
+                    uniques.append(fid)
+            sendMessage(encodeMessage(uniques))
+        elif receivedMessage:
+            sendMessage(encodeMessage(["Received: ", receivedMessage]))
