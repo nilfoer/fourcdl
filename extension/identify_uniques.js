@@ -13,7 +13,13 @@ function getAllMD5B64() {
     
     for (var d of divs) {
         var file_id = d.id;
-        var file_info_str = d.getElementsByClassName("file-info")[0].innerText;
+        var file_info_str = d.getElementsByClassName("file-info")
+        if (file_info_str.length > 0) {
+            file_info_str = file_info_str[0].innerText;
+        } else {
+            // file was deleted
+            continue;
+        }
         // use regex pattern
         var match = size_re.exec(file_info_str);
         // get caputre grp 1
