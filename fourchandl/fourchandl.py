@@ -503,7 +503,8 @@ def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique
 
         logger.info("Found file url of file: \"%s\" Total of %s files", 
                     file_url, len(dl_list))
-        print("Orig-fn:", file_post_dict["file_info"]["file_name_orig"])
+        print("Orig-fn:", file_post_dict["file_info"]["file_name_orig"], "|",
+              "MD5:", file_post_dict["file_info"]["file_md5_b64"])
 
         if unique_only:
             # cant use get_url_file_size here since it might take multiple seconds

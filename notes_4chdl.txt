@@ -228,3 +228,56 @@ suboptimal (obwohl es sich ja bei python doppelt lohnen muesste, da function cal
 (-> unsinnig in python data-oriented programmieren zu wollen)
 (deshalb 4chdl und tsu-info unnoetig verkompliziert)
 ___________________________________________________
+
+Allowed chars in base64:
+If you have a proper encoder for Base64, you will not see special characters except:
+
+[A-Z][a-z][0-9][+/] and the padding char '=' at the end to indicate the number of zero fill bytes
+___________________________________________________
+
+"==" at the end of every md5 base64 string:
+A note on the padding:
+
+I mentioned above that many Base64 encoding algorithms add a couple of characters of padding when encoding an MD5 value. 
+This is because Base64 represents 3 bytes of information as 4 characters. Since MD5 has 16 bytes of information, many 
+Base64 encoding algorithms append "==" to designate that the input of 16 bytes was 2 bytes short of the next multiple of 3, 
+which would have been 18 bytes. These 2 equal signs add no information whatsoever to the string, and can be discarded when 
+storing.
+
+___________________________________________________
+
+to activate a link to search by md5 base64 on desuarchive.org/ with 4chan-x
+remove the "#" in front of the line https://desuarchive.org/_/search/image/%sMD5/
+in Sauce settings
+
+%MD5: MD5 hash in base64.
+%sMD5: MD5 hash in base64 using - and _.
+(-> uses - for + and _ for /)
+
+if this wasnt in 4chan-x id have used the 4chandl companion addon to insert a link into the file info div
+
+___________________________________________________
+
+Mozilla Extension to Native App Comm:
+
+!!ATTENTION!! the example for native messaging by mozilla uses python2
+example using py3: https://github.com/mdn/webextensions-examples/tree/master/native-messaging
+(also in example_src_code folder)
+
+extension_comm_manifest.json -> native app info
+path: path to called native app
+allowed_extensions: extensions (== extension id) that may call this native app
+
+in Registry add:
+HKEY_CURRENT_USER\SOFTWARE\Mozilla\NativeMessagingHosts\{native app name}
+value = path to native app manifest.json
+so that Firefox knows which native apps are calleable etc.
+
+extension\manifest.json
+info of the extension itself
+app->id: id of application used to make it be able to call the native app
+
+having extension...bat call a separate runner file so we can have extension_comm in sep folder
+and still able to include fourchandl.gen_downloaded_files_info
+
+___________________________________________________
