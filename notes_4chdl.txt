@@ -278,6 +278,6 @@ info of the extension itself
 app->id: id of application used to make it be able to call the native app
 
 having extension...bat call a separate runner file so we can have extension_comm in sep folder
-and still able to include fourchandl.gen_downloaded_files_info
+and still able to include fourcdl.gen_downloaded_files_info
 
 ___________________________________________________

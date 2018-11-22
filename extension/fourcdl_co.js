@@ -51,7 +51,7 @@ function sendResponseToActiveTab(msg) {
 function sendNativeMsg(req) {
     console.log("From conentjs: " + req.file_info);
     var sending = browser.runtime.sendNativeMessage(
-        "fourchandl",
+        "fourcdl",
         req.file_info);
     sending.then(onResponse, onError);
 }

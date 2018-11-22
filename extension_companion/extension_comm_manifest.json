@@ -1,7 +1,7 @@
 {
-  "name": "fourchandl",
-  "description": "Co-app for fourchandl",
+  "name": "fourcdl",
+  "description": "Co-app for fourcdl",
   "path": "N:\\coding\\4chdl\\extension_companion\\extension_comm.bat",
   "type": "stdio",
-  "allowed_extensions": [ "fourchandl_companion@example.org" ]
+  "allowed_extensions": [ "fourcdl_companion@example.org" ]
 }

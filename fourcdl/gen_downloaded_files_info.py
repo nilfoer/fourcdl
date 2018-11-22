@@ -5,7 +5,7 @@ import pickle
 import collections
 import logging
 
-from fourchandl.crc import md5
+from fourcdl.crc import md5
 
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ def json_as_python_set(dct):
 
 
 VALID_FILE_EXT = ("webm", "gif", "jpg", "png")
-DIR_SUBSTR_EXCLUDE = (".git", "_files", "-Dateien", "fourchandl")
+DIR_SUBSTR_EXCLUDE = (".git", "_files", "-Dateien", "fourcdl")
 SIZE_DIV = 1024*1024
 ROUND_DECS = 2
 def generate_downloaded_files_info(root_dir):
@@ -231,10 +231,10 @@ def add_file_to_files_info(files_info_dict, f_type, size_bytes, md5_b64, file_pa
 
 
 # def main():
-#     # imports (import fourchandl.blabla) not working when trying to run this as script:
-#     # (also doesnt work if i rename fourchandl.fourchandl to something else so module doesnt match package name
+#     # imports (import fourcdl.blabla) not working when trying to run this as script:
+#     # (also doesnt work if i rename fourcdl.fourcdl to something else so module doesnt match package name
 #     # Are you by any chance trying to run a module in the package as a script? You can't do that, as that would mean the file is 'imported' as __main__ and has no context of a package.
-#     # -> handle all usage of fourchandl as script using -runner.py file (that uses fourchandl.fourchandl main()) or __main__.py in fourchandl folder
+#     # -> handle all usage of fourcdl as script using -runner.py file (that uses fourcdl.fourcdl main()) or __main__.py in fourcdl folder
 # 
 #     # go up one dir with ".."
 #     module_parent_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")

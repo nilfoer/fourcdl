@@ -1,26 +1,26 @@
 {
 
-  "description": "Co-app for fourchandl",
+  "description": "Co-app for fourcdl",
   "manifest_version": 2,
-  "name": "4chanDL Companion-App",
+  "name": "4CDownloader Companion-App",
   "version": "0.1",
   "icons": {
-    "48": "ico/fourchandl.png"
+    "48": "ico/fourcdl.png"
   },
 
   "applications": {
     "gecko": {
-      "id": "fourchandl_companion@example.org",
+      "id": "fourcdl_companion@example.org",
       "strict_min_version": "50.0"
     }
   },
 
   "background": {
-    "scripts": ["fourchandl_co.js"]
+    "scripts": ["fourcdl_co.js"]
   },
 
   "browser_action": {
-    "default_icon": "ico/fourchandl.png"
+    "default_icon": "ico/fourcdl.png"
   },
   
   "content_scripts": [

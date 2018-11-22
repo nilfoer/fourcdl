@@ -11,9 +11,9 @@ from collections import defaultdict
 import bs4
 import pyperclip
 
-from fourchandl.logging_setup import configure_logging
-from fourchandl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, export_files_info_pickle, add_file_to_files_info, generate_downloaded_files_info, convert_4chan_file_size
-from fourchandl.crc import md5, convert_b64str_to_hex, check_4chfile_crc
+from fourcdl.logging_setup import configure_logging
+from fourcdl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, export_files_info_pickle, add_file_to_files_info, generate_downloaded_files_info, convert_4chan_file_size
+from fourcdl.crc import md5, convert_b64str_to_hex, check_4chfile_crc
 
 logger = logging.getLogger(__name__)
 
@@ -1014,14 +1014,7 @@ def main():
     # ROOTDIR = os.getcwd()
     # sys.argv[0] is path to script -> which is fchdl-runner.py (but might be __main__.py as well)
     ROOTDIR = os.path.dirname(os.path.realpath(sys.argv[0]))
-    # -> removed __main__.py so fourchandl can only be started as script via fchdl-runner.py
-
-    # set working dir, so functions that just write to working dir e.g. with open("test.txt",..)
-    # also write to correct folder -> passing root_dir/a full path to all functions here now so not
-    # needed but it was b4 were we would just write to cwd
-    # os.chdir(ROOTDIR)
-
-    configure_logging(os.path.join(ROOTDIR, "fourchandl.log"))
+    # -> removed __main__.py so fourcdl can only be started as script via fchdl-runner.py
 
     # dont use clipwatch but use thread url as argv -> have to wait for imports when new thread
     cmd_line_arg1 = sys.argv[1]

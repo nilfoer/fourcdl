@@ -6,8 +6,8 @@ import logging
 import urllib.request
 
 from utils import *
-from fourchandl.fourchandl import download_with_retries_crc, download_thread
-from fourchandl.gen_downloaded_files_info import add_file_to_files_info
+from fourcdl.fourcdl import download_with_retries_crc, download_thread
+from fourcdl.gen_downloaded_files_info import add_file_to_files_info
 
 @pytest.fixture
 def setup_thread_for_download(setup_tmpdir):
@@ -48,7 +48,7 @@ def setup_thread_for_download(setup_tmpdir):
 def test_download_thread(setup_thread_for_download, monkeypatch):
     tmpdir, dl_thread_files_path, thread, dl_list, files_info_dict = setup_thread_for_download
     # just return file_url
-    monkeypatch.setattr("fourchandl.fourchandl.build_url_to_file", lambda x: x)
+    monkeypatch.setattr("fourcdl.fourcdl.build_url_to_file", lambda x: x)
 
     # test every time root md5 and export txt being correct
     # test with one or 2 failed md5s -> check if reported correctly and that havent been added to files_info_dict
@@ -90,7 +90,7 @@ def test_download_thread(setup_thread_for_download, monkeypatch):
     assert(export_txt == export_txt_expected)
 
     # CAREFUL
-    # downloaded_files_info.pickle only gets written when fourchandl is called as script
+    # downloaded_files_info.pickle only gets written when fourcdl is called as script
     # just use reference that we still have
     files_info_dict_actual = files_info_dict
     files_info_dict_expected = import_pickle(os.path.join(dl_thread_files_path, 
@@ -101,8 +101,8 @@ def test_download_thread(setup_thread_for_download, monkeypatch):
 def test_download_with_retries_crc(setup_tmpdir, caplog, monkeypatch):
     caplog.set_level(logging.DEBUG)
     tmpdir = setup_tmpdir
-    # print below works when: import fourchandl.fourchandl
-    # print(fourchandl.fourchandl.download)
+    # print below works when: import fourcdl.fourcdl
+    # print(fourcdl.fourcdl.download)
     dl_path = os.path.join(tmpdir, "test.download")
 
     # to dl file with urlretrieve i need to prepend file:/// (was only using 2 slashe b4 -> didnt work)
@@ -110,7 +110,7 @@ def test_download_with_retries_crc(setup_tmpdir, caplog, monkeypatch):
     # def dl_local(src, dst):
     #     shutil.copy2(src, dst)
     #     return True, {}
-    # monkeypatch.setattr("fourchandl.fourchandl.download", dl_local)
+    # monkeypatch.setattr("fourcdl.fourcdl.download", dl_local)
     # convert windows path C:\\blabla\\file.txt to url like C:/blabla/file.txt with pathname2url
     file_to_dl = "file:" + urllib.request.pathname2url(os.path.join(TESTS_DIR, "download_with_retries_files", "1521370139210.png"))
     # correct md5b64 gUkUw0o1n7cI+w0x8LWj2w==
@@ -119,8 +119,8 @@ def test_download_with_retries_crc(setup_tmpdir, caplog, monkeypatch):
     assert(md5_match)
     # test logging output
     assert caplog.record_tuples == [
-        ('fourchandl.crc', logging.DEBUG, 'CRC-Checking file "test.download"!'),
-        ('fourchandl.crc', logging.DEBUG, 'MD5-Check   "test.download" OK'),
+        ('fourcdl.crc', logging.DEBUG, 'CRC-Checking file "test.download"!'),
+        ('fourcdl.crc', logging.DEBUG, 'MD5-Check   "test.download" OK'),
     ]
     # clear logging records
     caplog.clear()
@@ -130,22 +130,22 @@ def test_download_with_retries_crc(setup_tmpdir, caplog, monkeypatch):
     assert(dl_success)
     assert(not md5_match)
     assert caplog.record_tuples == [
-        ('fourchandl.crc', logging.DEBUG, 'CRC-Checking file "test.download"!'),
-        ('fourchandl.crc', logging.WARNING, 'MD5-Check   "test.download" FAILED'),
-        ('fourchandl.fourchandl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
-        ('fourchandl.crc', logging.DEBUG, 'CRC-Checking file "test.download"!'),
-        ('fourchandl.crc', logging.WARNING, 'MD5-Check   "test.download" FAILED'),
+        ('fourcdl.crc', logging.DEBUG, 'CRC-Checking file "test.download"!'),
+        ('fourcdl.crc', logging.WARNING, 'MD5-Check   "test.download" FAILED'),
+        ('fourcdl.fourcdl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
+        ('fourcdl.crc', logging.DEBUG, 'CRC-Checking file "test.download"!'),
+        ('fourcdl.crc', logging.WARNING, 'MD5-Check   "test.download" FAILED'),
     ]
     caplog.clear()
 
     # download now always returns False
-    monkeypatch.setattr("fourchandl.fourchandl.download", lambda x,y: (False, {}))
+    monkeypatch.setattr("fourcdl.fourcdl.download", lambda x,y: (False, {}))
 
     dl_success, md5_match, headers = download_with_retries_crc(file_to_dl, dl_path, "gUkUw0o1n7cI+w0x8LWjff==")
     assert(not dl_success)
     assert(md5_match is None)
     assert caplog.record_tuples == [
-        ('fourchandl.fourchandl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
+        ('fourcdl.fourcdl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
     ]
 
     caplog.clear()
@@ -154,6 +154,6 @@ def test_download_with_retries_crc(setup_tmpdir, caplog, monkeypatch):
     assert(not dl_success)
     assert(md5_match is None)
     assert caplog.record_tuples == [
-        ('fourchandl.fourchandl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
-        ('fourchandl.fourchandl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!')
+        ('fourcdl.fourcdl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
+        ('fourcdl.fourcdl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!')
     ]

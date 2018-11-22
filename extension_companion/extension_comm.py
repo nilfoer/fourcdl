@@ -16,7 +16,7 @@ import sys
 import struct
 import os
 
-from fourchandl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, convert_4chan_file_size
+from fourcdl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, convert_4chan_file_size
 
 DOWNLOADED_FILES_INFO_PATH = r"N:\_archive\test\4c\downloaded_files_info.pickle"
 ROOTDIR = os.path.abspath(os.path.dirname(__file__))
