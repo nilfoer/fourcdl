@@ -1019,7 +1019,12 @@ def main():
     # dont use clipwatch but use thread url as argv -> have to wait for imports when new thread
     cmd_line_arg1 = sys.argv[1]
     if cmd_line_arg1 == "watch":
-        files_info_dict = import_files_info_pickle(os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
+        # check if we have a generated files info pickle
+        if not os.path.isfile("downloaded_files_info.pickle"):
+            files_info_dict = generate_downloaded_files_info(ROOTDIR)
+        else:
+            files_info_dict = import_files_info_pickle(
+                        os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
         try:
             watch_clip_for_4ch_threads(files_info_dict, ROOTDIR)
         except UnexpectedCrash as e:
