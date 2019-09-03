@@ -14,6 +14,7 @@ import pyperclip
 from fourcdl.logging_setup import configure_logging
 from fourcdl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, export_files_info_pickle, add_file_to_files_info, generate_downloaded_files_info, convert_4chan_file_size
 from fourcdl.crc import md5, convert_b64str_to_hex, check_4chfile_crc
+from fourcdl.autocomplete import init_autocomplete
 
 logger = logging.getLogger(__name__)
 
@@ -1025,6 +1026,10 @@ def main():
         else:
             files_info_dict = import_files_info_pickle(
                         os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
+
+        # setup sub-folder auto-complete
+        init_autocomplete(files_info_dict)
+
         try:
             watch_clip_for_4ch_threads(files_info_dict, ROOTDIR)
         except UnexpectedCrash as e:
@@ -1034,6 +1039,9 @@ def main():
             raise
     elif cmd_line_arg1 == "resume":
         files_info_dict = import_files_info_pickle(os.path.join(ROOTDIR, "downloaded_files_info.pickle"))
+        # setup sub-folder auto-complete
+        init_autocomplete(files_info_dict)
+
         state = import_state(os.path.join(ROOTDIR, "crash-exp.json"))
         # we just catch UnexpectedCrash here and then export state so resume_from_state_dict
         # handles when UnexpectedCrash gets raised or reraised(when we except it and raise it again to e.g. add information) to here (have to be careful since we might overwrite old state export that wasnt properly downloaded yet)
