@@ -281,3 +281,15 @@ having extension...bat call a separate runner file so we can have extension_comm
 and still able to include fourcdl.gen_downloaded_files_info
 
 ___________________________________________________
+
+git add all only exclude specific files
+
+Now git supports exclude certain paths and files by pathspec magic :(exclude) and its short form :!. So you can easily achieve it as the following command.
+
+git add --all -- :!main/dontcheckmein.txt
+git add -- . :!main/dontcheckmein.txt
+Actually you can specify more:
+
+git add --all -- :!path/to/file1 :!path/to/file2 :!path/to/folder1/*
+git add -- . :!path/to/file1 :!path/to/file2 :!path/to/folder1/*
+___________________________________________________

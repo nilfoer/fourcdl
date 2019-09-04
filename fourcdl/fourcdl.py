@@ -10,7 +10,7 @@ import pyperclip
 from fourcdl.logging_setup import configure_logging
 from fourcdl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, export_files_info_pickle, generate_downloaded_files_info, convert_4chan_file_size
 from fourcdl.crc import md5, convert_b64str_to_hex
-from fourcdl.download import download_thread
+from fourcdl.threading import download_thread_threaded
 from fourcdl.thread import get_key_from_furl, get_thread_from_html, is_4ch_thread_url
 from fourcdl.post import is_4ch_file_url
 from fourcdl.utils import sanitize_fn, get_url, write_to_file, append_to_file, UnexpectedCrash
@@ -27,6 +27,8 @@ opener = urllib.request.build_opener()
 opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:12.0) Gecko/20100101 Firefox/12.0')]
 # ...and install it globally so it can be used with urlretrieve/open
 urllib.request.install_opener(opener)
+
+DOWNLOAD_THREAD_FUNC = download_thread_threaded
 
 
 def get_new_clipboard(recent):
@@ -134,9 +136,8 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
 
             elif recent_value == "rename_thread":
                 # option to set new folder name when rename_thread is copied
-                folder_name = input("Input new folder name:\n")
-                thread["OP"]["folder_name"] = folder_name
-                print(f"Renamed thread folder to {folder_name}")
+                thread["OP"]["folder_name"] = cli_folder_name("Input new folder name:\n")
+                print(f"Renamed thread folder to {thread['OP']['folder_name']}")
                 
             elif file_post_dict:
                 file_post_dict = modify_current_file(file_post_dict, dl_list, recent_value)
@@ -227,9 +228,10 @@ def process_4ch_thread(url, files_info_dict):
     # with open("4chtest.html", "r", encoding="UTF-8") as f:
     #     html = f.read()
     thread = get_thread_from_html(html)
-    folder_name = input("Input the folder name the thread is going to be downloaded to "
-            "(e.g. \"gif_cute\", subfolders work too \"gif_model/Emily Rudd\"):\n")
-    thread["OP"]["folder_name"] = folder_name
+    thread["OP"]["folder_name"] = cli_folder_name(
+            "Input the folder name the thread is going to be downloaded to "
+            "(e.g. \"gif_cute\", subfolders work too \"gif_model/Emily Rudd\""
+            "):\n")
     thread["OP"]["unique_only"] = cli_yes_no("Only copy unique files?")
     try:
         dl_list = watch_for_file_urls(thread, files_info_dict)
@@ -238,6 +240,15 @@ def process_4ch_thread(url, files_info_dict):
         # instead of using raise UnexpectedCrash from e (gets rid of traceback) use with_traceback
         raise UnexpectedCrash("process_4ch_thread", thread, "Unexpected crash while processing 4ch thread! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
     return thread, dl_list
+
+
+def cli_folder_name(msg):
+    while True:
+        folder_name = input(msg).strip()
+        if any(c in ':?*"<>|' for c in folder_name):
+            print("Invalid character in folder name! Banned characters: ?:*\"<>|")
+        else:
+            return folder_name
 
 
 def cli_yes_no(question_str):
@@ -261,15 +272,17 @@ def watch_clip_for_4ch_threads(files_info_dict, root_dir):
         print("Watching clipboard for 4chan thread urls...")
         recent_value = "" 
         while not stopping:
-                tmp_value = pyperclip.paste()
-                if tmp_value != recent_value:
-                        recent_value = tmp_value
-                        if is_4ch_thread_url(recent_value):
-                                try:
-                                    to_dl.append(process_4ch_thread(recent_value, files_info_dict))
-                                except Exception as e:
-                                    raise UnexpectedCrash("watch_clip_for_4ch_threads", to_dl, "Unexpected crash while watching clipboard and appending! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
-                time.sleep(0.1)
+            # TODO(m): except pyperclip.PyperclipWindowsException which gets raised when the user
+            # e.g. locks the computer and we pyperclip can't access the clipboard
+            tmp_value = pyperclip.paste()
+            if tmp_value != recent_value:
+                    recent_value = tmp_value
+                    if is_4ch_thread_url(recent_value):
+                            try:
+                                to_dl.append(process_4ch_thread(recent_value, files_info_dict))
+                            except Exception as e:
+                                raise UnexpectedCrash("watch_clip_for_4ch_threads", to_dl, "Unexpected crash while watching clipboard and appending! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
+            time.sleep(0.1)
     except KeyboardInterrupt:
         print("Stopped watching clipboard for 4chan threads!")
 
@@ -309,7 +322,7 @@ def dl_multiple_threads(to_dl, files_info_dict, root_dir, successful_dl_threads=
             try:
                 # only start dl if file urls were copied from clipboard
                 if dl_list:
-                    download_thread(thread, dl_list, files_info_dict, root_dir, overwrite=overwrite)
+                    DOWNLOAD_THREAD_FUNC(thread, dl_list, files_info_dict, root_dir, overwrite=overwrite)
                     successful_dl_threads.append(thread["OP"]["thread_nr"])
             except Exception as e:
                     raise UnexpectedCrash("dl_multiple_threads", (to_dl, successful_dl_threads), "Unexpected crash while downloading multiple 4ch threads! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
@@ -428,7 +441,7 @@ def resume_from_state_dict(state_dict, files_info_dict, root_dir):
         # just single thread need to reraise since dl_list complete and we land in "download_thread" next resume -> tested OK
         # reraising uneccessary see above
         # nothing dled b4 crash
-        download_thread(last_thread, last_dl_list, files_info_dict, root_dir)
+        DOWNLOAD_THREAD_FUNC(last_thread, last_dl_list, files_info_dict, root_dir)
         try:
             user_handle_failed_md5(last_thread, last_thread["failed_md5"], root_dir)
         except KeyError:
@@ -442,7 +455,7 @@ def resume_from_state_dict(state_dict, files_info_dict, root_dir):
 
         logger.info("Found failed download -> trying to re-download, old files will be overwritten!")
         # ovewrite since file dled b4/at crash might be corrupt
-        download_thread(thread, dl_list, files_info_dict, root_dir, overwrite=True)
+        DOWNLOAD_THREAD_FUNC(thread, dl_list, files_info_dict, root_dir, overwrite=True)
         try:
             user_handle_failed_md5(thread, thread["failed_md5"], root_dir)
         except KeyError:
