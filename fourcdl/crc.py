@@ -3,6 +3,8 @@ import logging
 import hashlib
 import binascii
 
+from fourcdl.utils import write_to_file
+
 logger = logging.getLogger(__name__)
 
 
@@ -88,5 +90,22 @@ def check_thread_files_crc(thread, success_dl, thread_folder):
         logger.warning("The following files failed CRC-Check:\n%s", fmd5str)
 
     return failed_md5
+
+
+def append_to_md5_file(thread, dl_list, root_dir):  #, thread_folder, sanitized_folder_name):
+    final_str_ln = []
+    for url in dl_list:
+        md5hex = convert_b64str_to_hex(thread[url]["file_info"]["file_md5_b64"])
+        # one central md5 file now so its easiert to transfer -> write subfolder(s)
+        final_str_ln.append(f"{md5hex} *{thread['OP']['folder_name']}/{thread[url]['file_info']['dl_filename']}.{thread[url]['file_info']['file_ext']}")
+    # The first (normpath) strips off any trailing slashes, the second
+    # (basename) gives you the last part of the path. 
+    # Using only basename gives everything after the last slash, which could be ''
+    # md5_path = os.path.join(thread_folder, f"{os.path.basename(os.path.normpath(thread_folder)}.md5")
+    # md5_path = os.path.join(thread_folder, f"{sanitized_folder_name}.md5")
+    logger.info("Appending md5s!")
+    with open(os.path.join(root_dir, "4chan_dl.md5"), "a", encoding="UTF-8") as f:
+        # add newline so next append starts on new line
+        f.write("\n".join(final_str_ln) + "\n")
 
 

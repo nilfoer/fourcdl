@@ -6,7 +6,7 @@ import logging
 import urllib.request
 
 from utils import *
-from fourcdl.fourcdl import download_with_retries_crc, download_thread
+from fourcdl.download import download_with_retries_crc, download_thread
 from fourcdl.gen_downloaded_files_info import add_file_to_files_info
 
 @pytest.fixture
@@ -48,7 +48,7 @@ def setup_thread_for_download(setup_tmpdir):
 def test_download_thread(setup_thread_for_download, monkeypatch):
     tmpdir, dl_thread_files_path, thread, dl_list, files_info_dict = setup_thread_for_download
     # just return file_url
-    monkeypatch.setattr("fourcdl.fourcdl.build_url_to_file", lambda x: x)
+    monkeypatch.setattr("fourcdl.download.build_url_to_file", lambda x: x)
 
     # test every time root md5 and export txt being correct
     # test with one or 2 failed md5s -> check if reported correctly and that havent been added to files_info_dict
@@ -132,20 +132,20 @@ def test_download_with_retries_crc(setup_tmpdir, caplog, monkeypatch):
     assert caplog.record_tuples == [
         ('fourcdl.crc', logging.DEBUG, 'CRC-Checking file "test.download"!'),
         ('fourcdl.crc', logging.WARNING, 'MD5-Check   "test.download" FAILED'),
-        ('fourcdl.fourcdl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
+        ('fourcdl.download', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
         ('fourcdl.crc', logging.DEBUG, 'CRC-Checking file "test.download"!'),
         ('fourcdl.crc', logging.WARNING, 'MD5-Check   "test.download" FAILED'),
     ]
     caplog.clear()
 
     # download now always returns False
-    monkeypatch.setattr("fourcdl.fourcdl.download", lambda x,y: (False, {}))
+    monkeypatch.setattr("fourcdl.download.download", lambda x,y: (False, {}))
 
     dl_success, md5_match, headers = download_with_retries_crc(file_to_dl, dl_path, "gUkUw0o1n7cI+w0x8LWjff==")
     assert(not dl_success)
     assert(md5_match is None)
     assert caplog.record_tuples == [
-        ('fourcdl.fourcdl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
+        ('fourcdl.download', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
     ]
 
     caplog.clear()
@@ -154,6 +154,6 @@ def test_download_with_retries_crc(setup_tmpdir, caplog, monkeypatch):
     assert(not dl_success)
     assert(md5_match is None)
     assert caplog.record_tuples == [
-        ('fourcdl.fourcdl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
-        ('fourcdl.fourcdl', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!')
+        ('fourcdl.download', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
+        ('fourcdl.download', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!')
     ]
