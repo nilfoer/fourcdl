@@ -185,7 +185,7 @@ def build_export_str(thread, dl_list):
     return "\n".join(exp_str_lines)
 
 
-thread_re = re.compile(r"https?:\/\/boards\.4chan\.org\/[a-z]+\/thread\/\d+")
+thread_re = re.compile(r"https?:\/\/boards\.(4chan|4channel)\.org\/[a-z]+\/thread\/\d+")
 def is_4ch_thread_url(url):
     if re.match(thread_re, url):
         return True

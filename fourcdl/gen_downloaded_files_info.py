@@ -193,8 +193,8 @@ def file_unique_converted(files_info_dict, f_type, size, md5_b64, print_flist=Fa
         flist = files_info_dict[f_type][size][md5_b64]
         unique = False
         if print_flist:
-            print("Files with matching md5s:")
-            print("\n".join(flist))
+            print("Files with matching md5s:\n  ", end='')
+            print("\n  ".join(flist))
     except KeyError:
         unique = True
 

@@ -62,7 +62,6 @@ def convert_hex_to_b64str(hexstr):
 
 def check_4chfile_crc(file_path, md5_b64):
     _, fn = os.path.split(file_path)
-    logger.debug("CRC-Checking file \"%s\"!", fn)
     if check_4chan_md5(file_path, md5_b64):
         logger.debug("MD5-Check   \"%s\" OK", fn)
         return True

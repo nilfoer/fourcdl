@@ -119,7 +119,6 @@ def test_download_with_retries_crc(setup_tmpdir, caplog, monkeypatch):
     assert(md5_match)
     # test logging output
     assert caplog.record_tuples == [
-        ('fourcdl.crc', logging.DEBUG, 'CRC-Checking file "test.download"!'),
         ('fourcdl.crc', logging.DEBUG, 'MD5-Check   "test.download" OK'),
     ]
     # clear logging records
@@ -130,10 +129,8 @@ def test_download_with_retries_crc(setup_tmpdir, caplog, monkeypatch):
     assert(dl_success)
     assert(not md5_match)
     assert caplog.record_tuples == [
-        ('fourcdl.crc', logging.DEBUG, 'CRC-Checking file "test.download"!'),
         ('fourcdl.crc', logging.WARNING, 'MD5-Check   "test.download" FAILED'),
         ('fourcdl.download', logging.WARNING, 'Download failed: either md5 didnt match or there were connection problems! -> Retrying!'),
-        ('fourcdl.crc', logging.DEBUG, 'CRC-Checking file "test.download"!'),
         ('fourcdl.crc', logging.WARNING, 'MD5-Check   "test.download" FAILED'),
     ]
     caplog.clear()

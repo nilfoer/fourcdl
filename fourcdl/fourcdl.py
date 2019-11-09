@@ -29,14 +29,30 @@ opener.addheaders = [('User-agent', 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:12.0
 urllib.request.install_opener(opener)
 
 DOWNLOAD_THREAD_FUNC = download_thread_threaded
+PYPERCLIP_ACCESS_ERROR_SLEEP = 5
 
 
 def get_new_clipboard(recent):
     """Check clipboard for new contents and returns it if its doesnt match the content of recent
     :param recent: recent content we dont want to count as new clipboard content"""
+    times_slept_for_clip_access = 0
     try:
         while True:
-            tmp_value = pyperclip.paste()
+            try:
+                tmp_value = pyperclip.paste()
+            except pyperclip.PyperclipWindowsException:
+                # except pyperclip.PyperclipWindowsException which gets raised when the user
+                # e.g. locks the computer and we pyperclip can't access the clipboard
+                if times_slept_for_clip_access == 0:
+                    print("Couldn't read from clipboard! This might be due to the computer "
+                          "being in the locking screen.")
+                times_slept_for_clip_access += 1
+                # write this on the same line so we don't spam the console by using the
+                # carriage return ('\r') character to return to the start of the line without
+                # advancing to the next line
+                print(f"Trying again in {PYPERCLIP_ACCESS_ERROR_SLEEP} seconds... "
+                      f"x{times_slept_for_clip_access}", end='\r')
+                time.sleep(PYPERCLIP_ACCESS_ERROR_SLEEP)
             if tmp_value != recent:
                 return tmp_value
             time.sleep(0.1)
@@ -80,14 +96,19 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
     file_post_dict = None
     while running:
         recent_value = get_new_clipboard(recent_value)
+        # None -> caught a user interrupt
         if recent_value is None:
+            # we had a current file
             if file_post_dict:
                 if file_post_dict["file_info"]["to_download"]:
-                    logger.info("File will be downloaded as \"%s.%s\"", file_post_dict["file_info"]["dl_filename"], file_post_dict["file_info"]["file_ext"])
+                    logger.info("File will be downloaded as \"%s.%s\"\n",
+                                file_post_dict["file_info"]["dl_filename"],
+                                file_post_dict["file_info"]["file_ext"])
                 elif not file_post_dict["file_info"]["unique"]:
                     file_url = get_key_from_furl(file_post_dict["file_info"]["file_url"])
-                    logger.info("File %s wasnt unique and therefore wasnt added to the download list!",
-                            file_post_dict["file_info"]["dl_filename"])
+                    logger.info("File \"%s\" wasn't unique and therefore was NOT added "
+                                "to the download list!\n",
+                                file_post_dict["file_info"]["file_name_orig"])
                     # remove on set raises KeyError when item not present -> discard(x) doesnt
                     dl_list.remove(file_url)
 
@@ -99,26 +120,32 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
                 if whole == "y":
                     return get_all_file_urls_thread(thread, unique_only, files_info_dict)
 
-            print("Stopped watching clipboard for 4chan file urls!")
+            print("Stopped watching clipboard for 4chan file URLs!")
             running = False
         else:
             if is_4ch_file_url(recent_value):
-                # remove https?: from start of url, better to use address without http/https since the copies differ with/without 4chan x -> or just make sure that its https: by replacing match with https:
+                # remove https?: from start of url, better to use address
+                # without http/https since the copies differ with/without 4chan x
+                # -> or just make sure that its https: by replacing match with https:
                 # better remove whole main domain part since files might be on different servers
-                # but we always want to dl from i.4cdn.org later since its faster (as stated by 4chan x)
+                # but we always want to dl from i.4cdn.org later since its faster
+                # (as stated by 4chan x)
                 file_url = get_key_from_furl(recent_value)
 
                 # report on final filename if there was a prev file
                 if file_post_dict:
                     if file_post_dict["file_info"]["to_download"]:
-                        logger.info("File will be downloaded as \"%s.%s\"", file_post_dict["file_info"]["dl_filename"], file_post_dict["file_info"]["file_ext"])
+                        logger.info("File will be downloaded as \"%s.%s\"\n",
+                                    file_post_dict["file_info"]["dl_filename"],
+                                    file_post_dict["file_info"]["file_ext"])
                     elif not file_post_dict["file_info"]["unique"]:
                         # TODO(moe): this seems complicated -> better to not use dl_list at all and just work
                         # with to_dl in dict etc.
                         file_url_old = get_key_from_furl(file_post_dict["file_info"]["file_url"])
                         # may have removed file alrdy so use orig-fn oder 4ch fn
-                        logger.info("File with orig. filename %s wasnt unique and therefore wasnt "
-                                    "added to the download list!", file_post_dict["file_info"]["file_name_orig"])
+                        logger.info("File \"%s\" wasn't unique and therefore was NOT "
+                                    "added to the download list!\n",
+                                    file_post_dict["file_info"]["file_name_orig"])
                         # remove on set raises KeyError when item not present -> discard(x) doesnt
                         # might have removed file with remove_file alrdy -> use discard
                         dl_list.discard(file_url_old)
@@ -130,15 +157,14 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
                         except KeyError:
                             pass
                 if file_url in dl_list:
-                    logger.info("File name of %s has been RESET!!!", file_url.split("/")[-1])
+                    logger.info("RESET file name of \"%s\"!!!", file_url.split("/")[-1])
 
-                file_post_dict = add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique_only)
-
-            elif recent_value == "rename_thread":
+                file_post_dict = add_file_url_to_downloads(file_url, thread, dl_list,
+                                                           files_info_dict, unique_only)
+            elif recent_value.strip() == "rename_thread":
                 # option to set new folder name when rename_thread is copied
                 thread["OP"]["folder_name"] = cli_folder_name("Input new folder name:\n")
                 print(f"Renamed thread folder to {thread['OP']['folder_name']}")
-                
             elif file_post_dict:
                 file_post_dict = modify_current_file(file_post_dict, dl_list, recent_value)
 
@@ -153,7 +179,7 @@ def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique
         file_post_dict = thread[file_url]
     except KeyError:
         file_post_dict = None
-        print(f"File of url \"{file_url}\" was not found in the thread!")
+        print(f"ERROR: File of URL \"{file_url}\" was deleted or is not from this thread!")
     # only proceed if file_url is in dict/thread
     else:
         # add file_url (without http part) of file post to dl list and set to_download
@@ -177,8 +203,8 @@ def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique
                     print_flist=True):
                 file_post_dict["file_info"]["unique"] = False
                 file_post_dict["file_info"]["to_download"] = False
-                logger.info("ALERT!! File with url %s has been downloaded before! "
-                            "Copy add_anyway to add file to downloads!", file_url)
+                logger.info("ALERT!! File with url %s has been downloaded before!\n"
+                            "    Copy add_anyway to add file to downloads!", file_url)
             else:
                 file_post_dict["file_info"]["unique"] = True
 
@@ -190,13 +216,14 @@ def modify_current_file(file_post_dict, dl_list, cmd):
     # if after for..in is part of comprehension syntax <-> if..else b4 for..in is pythons equivalent of ternary operator
     # only keep chars if theyre alphanumerical (a-zA-Z0-9) or in the tuple (' ', '_'), replace rest with _
     # reset file name to 4ch name when reset_filename is copied
+    cmd = cmd.strip()
     if cmd == "reset_filename":
         file_post_dict["file_info"]["dl_filename"] = file_post_dict['file_info']['file_name_4ch']
-        print("Filename has been reset!")
+        print("Filename has been reset to ", file_post_dict['file_info']['file_name_4ch'])
     elif cmd == "add_anyway":
         file_post_dict["file_info"]["to_download"] = True
-        logger.info("File \"%s\" was added to download_list even though it wasnt unique!",
-                file_post_dict["file_info"]["dl_filename"])
+        logger.info("File \"%s\" WAS added to download_list even though it wasnt unique!",
+                    file_post_dict["file_info"]["dl_filename"])
     elif cmd == "remove_file":
         logger.info("Removing file with filename \"%s\" from download list",
                     file_post_dict["file_info"]["dl_filename"])
@@ -212,21 +239,19 @@ def modify_current_file(file_post_dict, dl_list, cmd):
         # still assumes we have a current file -> copy non-furl -> crash since
         # fname key doesnt exist -> fix: return local var and assign in outer scope
         file_post_dict = None
-        logger.info("New total file count: %s", len(dl_list))
+        logger.info("New total file count: %s\n", len(dl_list))
     else:
         sanitized_clip = sanitize_fn(cmd)
 
         dl_filename = f"{file_post_dict['file_info']['dl_filename']}_{sanitized_clip}"
         file_post_dict["file_info"]["dl_filename"] = dl_filename
-        print(f"Not a file url -> clipboard was appended to filename: \"{dl_filename}\"")
+        print(f"Not a file URL -> clipboard was appended to filename:\n{dl_filename}")
 
     return file_post_dict
 
 
 def process_4ch_thread(url, files_info_dict):
     html = get_url(url)
-    # with open("4chtest.html", "r", encoding="UTF-8") as f:
-    #     html = f.read()
     thread = get_thread_from_html(html)
     thread["OP"]["folder_name"] = cli_folder_name(
             "Input the folder name the thread is going to be downloaded to "
@@ -236,9 +261,13 @@ def process_4ch_thread(url, files_info_dict):
     try:
         dl_list = watch_for_file_urls(thread, files_info_dict)
     except Exception as e:
-        # i dont rly need dl_list since im setting to_download and dl_filename in mutable dict thats contained inside thread dict
+        # i dont rly need dl_list since im setting to_download and dl_filename
+        # in mutable dict thats contained inside thread dict
         # instead of using raise UnexpectedCrash from e (gets rid of traceback) use with_traceback
-        raise UnexpectedCrash("process_4ch_thread", thread, "Unexpected crash while processing 4ch thread! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
+        raise UnexpectedCrash("process_4ch_thread", thread,
+                              "Unexpected crash while processing 4ch thread! Program state has been"
+                              " saved, start script with option resume to continue with old state!"
+                              ).with_traceback(e.__traceback__)
     return thread, dl_list
 
 
@@ -248,6 +277,7 @@ def cli_folder_name(msg):
         if any(c in ':?*"<>|' for c in folder_name):
             print("Invalid character in folder name! Banned characters: ?:*\"<>|")
         else:
+            logger.debug("Folder name is \"%s\"", folder_name)
             return folder_name
 
 
@@ -266,25 +296,29 @@ def watch_clip_for_4ch_threads(files_info_dict, root_dir):
     """Watch clip for 4chan thread urls, once url is found process_4ch_thread is called,
     returned thread dicts and dl_links (which also are the keys of files to dl in thread dict)
     are appended to to_dl."""
-    stopping = False
     to_dl = []
-    try:
-        print("Watching clipboard for 4chan thread urls...")
-        recent_value = "" 
-        while not stopping:
-            # TODO(m): except pyperclip.PyperclipWindowsException which gets raised when the user
-            # e.g. locks the computer and we pyperclip can't access the clipboard
-            tmp_value = pyperclip.paste()
-            if tmp_value != recent_value:
-                    recent_value = tmp_value
-                    if is_4ch_thread_url(recent_value):
-                            try:
-                                to_dl.append(process_4ch_thread(recent_value, files_info_dict))
-                            except Exception as e:
-                                raise UnexpectedCrash("watch_clip_for_4ch_threads", to_dl, "Unexpected crash while watching clipboard and appending! Program state has been saved, start script with option resume to continue with old state!").with_traceback(e.__traceback__)
-            time.sleep(0.1)
-    except KeyboardInterrupt:
-        print("Stopped watching clipboard for 4chan threads!")
+    print("Watching clipboard for 4chan thread urls...")
+    recent_value = None
+    while True:
+        recent_value = get_new_clipboard(recent_value)
+        if recent_value is None:
+            print("Stopped watching clipboard for 4chan thread URLs!")
+            break
+        elif is_4ch_thread_url(recent_value):
+            try:
+                to_dl.append(process_4ch_thread(recent_value, files_info_dict))
+            except Exception as e:
+                raise UnexpectedCrash(
+                        "watch_clip_for_4ch_threads", to_dl,
+                        "Unexpected crash while watching clipboard and appending! "
+                        "Program state has been saved, start script with option resume "
+                        "to continue with old state!"
+                        ).with_traceback(e.__traceback__)
+
+    # write state before downloading as safety measure against running into a dead lock
+    # due to a threaded dl worker crashing or a user hitting Ctrl-C twice and interrupting
+    # the download
+    export_state_from_dict({"dl_multiple_threads": (to_dl, [])}, os.path.join(root_dir, "auto-backup.json"))
 
     dl_multiple_threads(to_dl, files_info_dict, root_dir)
 
@@ -293,7 +327,7 @@ def read_from_file(file_path):
     with open(file_path, "r", encoding="UTF-8") as f:
         contents = f.read()
     return contents
-    
+
 
 def export_state_from_dict(program_state, filepath):
     # readability indent=4, sort_keys=True
@@ -411,11 +445,14 @@ def resume_from_state_dict(state_dict, files_info_dict, root_dir):
             pass
         else:
             # no dl_list saved use to_download vals to recreate it
-            # multiple if statements (and for..in allowed in comprehension) -> stack them after each other
             last_dl_list = recreate_dl_list(last_thread)
 
-            logger.info("Start watching for 4ch_file_urls for latest thread \"%s\" -> will be downloaded with the previously processed threads afterwards!", last_thread["OP"]["thread_nr"])
-            # dont try to raise UnexpectedCrash here unless we just supply to_dl again for crash point "watch_clip_for_4ch_threads" -> few copies we have to do again dont matter?
+            logger.info("Start watching for 4ch_file_urls for latest thread \"%s\" -> will be "
+                        "downloaded with the previously processed threads afterwards!",
+                        last_thread["OP"]["thread_nr"])
+            # dont try to raise UnexpectedCrash here unless we'd just supply
+            # to_dl again for crash point "watch_clip_for_4ch_threads"
+            # -> few copies we have to do again dont matter?
             last_dl_list = watch_for_file_urls(last_thread, files_info_dict, prev_dl_list=last_dl_list)
             to_dl.append((last_thread, last_dl_list))
 
@@ -508,7 +545,8 @@ def main():
         # setup sub-folder auto-complete
         init_autocomplete(files_info_dict)
 
-        state = import_state(os.path.join(ROOTDIR, "crash-exp.json"))
+        state_json_name = os.path.join(ROOTDIR, "crash-exp.json") if len(sys.argv) < 3 else sys.argv[2]
+        state = import_state(state_json_name)
         # we just catch UnexpectedCrash here and then export state so resume_from_state_dict
         # handles when UnexpectedCrash gets raised or reraised(when we except it and raise it again to e.g. add information) to here (have to be careful since we might overwrite old state export that wasnt properly downloaded yet)
         try:
