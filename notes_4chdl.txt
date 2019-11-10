@@ -293,3 +293,13 @@ Actually you can specify more:
 git add --all -- :!path/to/file1 :!path/to/file2 :!path/to/folder1/*
 git add -- . :!path/to/file1 :!path/to/file2 :!path/to/folder1/*
 ___________________________________________________
+
+Mozilla native messaging
+
+Errors and the output of stderr that is sent from the native app is not displayed in the debugging console of the extension
+but rather in Firefox Menu -> Web-Dev -> Browser Console
+
+Native app manifest (here: extension_comm_manifest.json) path:
+On Windows, this may be relative to the manifest itself. On OS X and Linux it must be absolute.
+
+___________________________________________________

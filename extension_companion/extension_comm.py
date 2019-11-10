@@ -50,12 +50,13 @@ def sendMessage(encodedMessage):
 def main():
     # TODO(moe): change to connection-based so we dont have to always reimport a 7mb+ file
     downloaded_files_info = import_files_info_pickle(DOWNLOADED_FILES_INFO_PATH)
+    sys.stderr.write("Loaded files info pickle!")
     while True:
         receivedMessage = getMessage()
         # data in stdout has to follow nativeMessaging protocol so for debugging write to stderr
-        # receiving stderr in browser still doesnt work for me
-        # print('To stderr.', file=sys.stderr)
+        # stderr output is printed in Firefox Menu -> Web-Dev -> Browser Console, not the debugging console of the extension
         if isinstance(receivedMessage, list):
+            sys.stderr.write("Received list")
             uniques = []
             for fid, fname, fsize_str, md5 in receivedMessage:
                 converted = convert_4chan_file_size(fsize_str)
@@ -64,4 +65,5 @@ def main():
                     uniques.append(fid)
             sendMessage(encodeMessage(uniques))
         elif receivedMessage:
-            sendMessage(encodeMessage(["Received: ", receivedMessage]))
+            sys.stderr.write("Received unexpected:", receivedMessage)
+            # sendMessage(encodeMessage(["Received: ", receivedMessage]))

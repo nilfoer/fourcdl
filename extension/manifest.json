@@ -8,7 +8,7 @@
     "48": "ico/fourcdl.png"
   },
 
-  "applications": {
+  "browser_specific_settings": {
     "gecko": {
       "id": "fourcdl_companion@example.org",
       "strict_min_version": "50.0"
