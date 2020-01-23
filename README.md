@@ -14,6 +14,7 @@ Start the script using:
 > fourcdl-runner.py watch
 ```
 It will watch your clipboard for copied 4chan thread urls. Once a thread url is copied you need to supply a folder name to which the thread will be downloaded to. You'll also be asked if you want to only download unique files (don't worry you can still download duplicates later).
+
 ```
 > fourcdl-runner.py watch
 Watching clipboard for 4chan thread urls...
@@ -29,6 +30,7 @@ Copy cmds are: rename_thread, reset_filename, remove_file !
 Now you can either press `Ctrl+C` and answer `y` to download the whole thread or only unique files if that was previously selected. 
 
 Or you can copy link addresses of 4chan files in this thread (e.g. use `RMB` then `e` on a thumbnail in Chrome). The original filename and and the MD5 hash will be printed. Now you're in append mode and copied text that isn't a 4chan file URL will be appended to the download file name of the file.
+
 ```
 14:22:00 - INFO - Found file url of file: "p/1579558670830.jpg" Total of 1 files
 Orig-fn: 2020-01-20-0008 | MD5: IzisM5jU8PGq+PDZ7n1Wkw==
@@ -36,6 +38,7 @@ Not a file URL -> clipboard was appended to filename:
 1579558670830_Fomapan 200_ shot on Canonet QL17_ developed in Cinestill Monobath
 ```
 If the file was already downloaded before the following message will appear:
+
 ```
 Files with matching md5s:
   p_bw-photos\1579558670830_Fomapan 200_ shot on Canonet QL17_ developed in Cinestill Monobath.jpg
@@ -50,6 +53,7 @@ There are three special commands that when copied trigger an action:
 - remove_file: Last copied file will be removed from download list.
 
 Once you want to stop adding files for this thread press `Ctrl+C` **once** then you can copy the URL of another thread url or press `Ctrl+C` **once** again to start downloading.
+
 ```
 Stopped watching clipboard for 4chan file URLs!
 Stopped watching clipboard for 4chan thread URLs!
