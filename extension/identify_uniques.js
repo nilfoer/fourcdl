@@ -9,7 +9,8 @@ function getAllMD5B64() {
     // get array of [div file id, file size in kb or mb, md5_b64]
     var result = [];
     var divs = document.getElementsByClassName("file");
-    var size_re = /^(File: )?(.*)  ?\(([\d\.]+ [KMB]+),/;
+    // 4chan-x may add Spoiler info in parens with file size
+    var size_re = /^(?:File: )?(.+) \((?:Spoiler, )?([\d\.]+ [KMB]+),/;
     
     for (var d of divs) {
         var file_id = d.id;
@@ -22,9 +23,8 @@ function getAllMD5B64() {
         }
         // use regex pattern
         var match = size_re.exec(file_info_str);
-        // get caputre grp 1
-        var file_size_str = match[3];
-        var file_name = match[2];
+        var file_size_str = match[2];
+        var file_name = match[1];
         // use css selector to get to img then get md5
         var md5_b64 = d.querySelector("a.fileThumb > img").getAttribute("data-md5");
         result.push([file_id, file_name, file_size_str, md5_b64])

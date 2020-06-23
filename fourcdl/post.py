@@ -16,7 +16,7 @@ def get_post_info(postinfo):
     return utc, post_nr, [] 
 
 
-file_size_res_re = re.compile(r".+\.\w{2,5} \(([0-9\.]+ [A-Z]+), (\d+x\d+)\)")
+file_size_res_re = re.compile(r"File: .+ \(([0-9\.]+ [KMB]{1,2}), (\d+x\d+)\)")
 def get_file_info(post):
     filediv = post.select_one("div.file")
     if filediv:
@@ -37,6 +37,10 @@ def get_file_info(post):
                 file_name_orig = filediv_cont.a["title"].rsplit(".", 1)[0]
             except KeyError:
                 file_name_orig = filediv_cont.a.text.rsplit(".", 1)[0]
+            # using 4chan's spoiler function so orig fn will be in fileText div's title
+            # instead of on the a tag
+            if "." not in file_name_orig and "Spoiler" in file_name_orig:
+                file_name_orig = filediv_cont["title"]
             # unpack groups
             file_size, file_res = re.match(file_size_res_re, filediv_cont.text).groups()
             file_thumb = filediv.select_one("img")
