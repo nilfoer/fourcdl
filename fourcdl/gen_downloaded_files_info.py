@@ -201,6 +201,17 @@ def file_unique_converted(files_info_dict, f_type, size, md5_b64, print_flist=Fa
     return unique
 
 
+def get_file_list(files_info_dict, f_type, size, md5_b64, print_flist=False):
+    """
+    Expects file size as string in MB with 2 decs e.g. "2.35"
+    """
+    try:
+        flist = files_info_dict[f_type][size][md5_b64]
+        return flist
+    except KeyError:
+        return None
+
+
 def add_file_to_files_info(files_info_dict, f_type, size_bytes, md5_b64, file_path):
     """
     Adds md5 as b64 encoded ASCII string to files_info_dict and appends

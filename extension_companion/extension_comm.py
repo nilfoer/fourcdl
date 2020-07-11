@@ -16,9 +16,9 @@ import sys
 import struct
 import os
 
-from fourcdl.gen_downloaded_files_info import file_unique_converted, import_files_info_pickle, convert_4chan_file_size
+from fourcdl.gen_downloaded_files_info import get_file_list, import_files_info_pickle, convert_4chan_file_size
 
-DOWNLOADED_FILES_INFO_PATH = r"N:\_archive\test\4c\downloaded_files_info.pickle"
+DOWNLOADED_FILES_INFO_PATH = r"N:\_pnew\4c\downloaded_files_info.pickle"
 ROOTDIR = os.path.abspath(os.path.dirname(__file__))
 
 # If the native application sends any output to stderr, the browser will redirect it to the browser console.
@@ -57,13 +57,12 @@ def main():
         # stderr output is printed in Firefox Menu -> Web-Dev -> Browser Console, not the debugging console of the extension
         if isinstance(receivedMessage, list):
             sys.stderr.write("Received list")
-            uniques = []
+            fid_fnlist = {}
             for fid, fname, fsize_str, md5 in receivedMessage:
                 converted = convert_4chan_file_size(fsize_str)
                 f_type = fname.strip().rsplit(".", 1)[1]
-                if file_unique_converted(downloaded_files_info, f_type, converted, md5):
-                    uniques.append(fid)
-            sendMessage(encodeMessage(uniques))
+                fid_fnlist[fid] = get_file_list(downloaded_files_info, f_type, converted, md5)
+            sendMessage(encodeMessage(fid_fnlist))
         elif receivedMessage:
             sys.stderr.write("Received unexpected:", receivedMessage)
             # sendMessage(encodeMessage(["Received: ", receivedMessage]))

@@ -1,8 +1,32 @@
-function markUniqueFiles(file_ids) {
-    for (var fid of file_ids) {
-        // change bgcolor of div with fid to red
-        document.getElementById(fid).style.background = "#ffc29c";
-    }
+function markFiles(fid_fnlist) {
+    // delete all previous file listings that might exist from prev runs
+    for(let n of document.querySelectorAll(".fcdl-file-listing"))
+        n.remove();
+
+    Object.keys(fid_fnlist).forEach(function(key) {
+        // fids as keys here
+        // e.g. f4269593 = id of .file div
+        // post divs of form p4269593
+        let post_div = document.getElementById("p" + key.slice(1));
+        let file_text_container = document.getElementById(key).querySelector(".fileText");
+        let file_list = fid_fnlist[key];
+        if(file_list == null) {
+            post_div.style.background = "#f0c7ae";
+        } else {
+            let file_listing = document.createElement("div");
+            file_listing.classList.add("fcdl-file-listing");
+            file_listing.style.backgroundColor = "#fff";
+            file_listing.style.padding = "3px 5px";
+            file_listing.style.margin = "5px 0";
+            file_listing.style.display = "table"; // so we dont take full width of the container
+            // only needed for span not div file_listing.appendChild(document.createElement("br"));
+            for(let fn of file_list) {
+                // append supports multiple DOMStrings or nodes
+                file_listing.append(fn, document.createElement("br"));
+            }
+            file_text_container.append(file_listing);
+        }
+    });
 }
 
 function getAllMD5B64() {
@@ -41,9 +65,9 @@ function sendIdMd5Info() {
 }
 
 // If we want send messages back from the content script to the background page,  we would use runtime.sendMessage()
-function markUniquesReceiver(request, sender, sendResponse) {    
-    markUniqueFiles(request.uniques);
+function markFilesReceiver(request, sender, sendResponse) {    
+    markFiles(request.uniques);
 }
 
 sendIdMd5Info();
-browser.runtime.onMessage.addListener(markUniquesReceiver);
+browser.runtime.onMessage.addListener(markFilesReceiver);
