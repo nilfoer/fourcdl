@@ -4,6 +4,7 @@ import time
 import logging
 import urllib.request
 import json
+import re
 
 import pyperclip
 
@@ -91,9 +92,11 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
     unique_only = thread["OP"]["unique_only"]
 
     print("Watching clipboard for 4chan file urls...")
-    print("Copy cmds are: rename_thread, reset_filename, remove_file !")
+    print("Copy cmds are: rename_thread, reset_filename, remove_file, toggle_use_orig_fn,"
+          " reset_to_4ch_fn !")
     recent_value = None
     file_post_dict = None
+    use_orig_filename = False
     while running:
         recent_value = get_new_clipboard(recent_value)
         # None -> caught a user interrupt
@@ -160,13 +163,19 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
                     logger.info("RESET file name of \"%s\"!!!", file_url.split("/")[-1])
 
                 file_post_dict = add_file_url_to_downloads(file_url, thread, dl_list,
-                                                           files_info_dict, unique_only)
+                                                           files_info_dict, unique_only,
+                                                           use_orig_filename=use_orig_filename)
             elif recent_value.strip() == "rename_thread":
                 # option to set new folder name when rename_thread is copied
                 thread["OP"]["folder_name"] = cli_folder_name("Input new folder name:\n")
                 print(f"Renamed thread folder to {thread['OP']['folder_name']}")
+            elif recent_value.strip() == "toggle_use_orig_fn":
+                # option to set new folder name when rename_thread is copied
+                use_orig_filename = not use_orig_filename
+                print(f"Append original filename by default: {use_orig_filename}")
             elif file_post_dict:
-                file_post_dict = modify_current_file(file_post_dict, dl_list, recent_value)
+                file_post_dict = modify_current_file(file_post_dict, dl_list, recent_value,
+                                                     use_orig_filename=use_orig_filename)
 
     # since were working on thread directly and its a mutable type(dict) we dont have
     # to return (but mb more readable)
@@ -174,7 +183,17 @@ def watch_for_file_urls(thread, files_info_dict, prev_dl_list=None):
     return list(dl_list)
 
 
-def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique_only):
+ARTIST_NAMES_RE = (
+        re.compile(r"by(?:-|_)((\w+)(?:-|_)(?:.$)?)"),
+        re.compile(r"^([-_A-Za-z0-9]+?)(?:_|-)\d{4,}(?:_|-)"),
+        re.compile(r"^\d{4,}_([-_A-Za-z0-9]+)_"),
+        re.compile(r"^\d{4,}-([-_A-Za-z0-9]+)-"),
+        re.compile(r"\d{4,}\.([-_A-Za-z0-9]+)_"),
+)
+
+
+def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict,
+                              unique_only, use_orig_filename=False):
     try:
         file_post_dict = thread[file_url]
     except KeyError:
@@ -187,10 +206,30 @@ def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique
         file_post_dict["file_info"]["to_download"] = True
         file_post_dict["file_info"]["dl_filename"] = file_post_dict['file_info']['file_name_4ch']
 
-        logger.info("Found file url of file: \"%s\" Total of %s files", 
+        logger.info("Found file url of file: \"%s\" Total of %s files",
                     file_url, len(dl_list))
         print("Orig-fn:", file_post_dict["file_info"]["file_name_orig"], "|",
               "MD5:", file_post_dict["file_info"]["file_md5_b64"])
+
+        if use_orig_filename:
+            file_post_dict["file_info"]["dl_filename"] = (
+                f"{file_post_dict['file_info']['file_name_4ch']}_"
+                f"{file_post_dict['file_info']['file_name_orig']}")
+            print(f"Appended original filename: {file_post_dict['file_info']['dl_filename']}")
+        else:
+            file_post_dict["file_info"]["dl_filename"] = (
+                    file_post_dict['file_info']['file_name_4ch'])
+            # look for possible artist names in the orig fn
+            orig_fn = file_post_dict['file_info']['file_name_orig']
+
+            possible_artist_names = []
+            for regexpr in ARTIST_NAMES_RE:
+                for match in regexpr.finditer(orig_fn):
+                    possible_artist_names.extend(match.groups())
+
+            if possible_artist_names:
+                possible_artist_names_str = "\n".join(possible_artist_names)
+                print(f"Possible artist(s) found:\n{possible_artist_names_str}")
 
         if unique_only:
             # cant use get_url_file_size here since it might take multiple seconds
@@ -211,15 +250,25 @@ def add_file_url_to_downloads(file_url, thread, dl_list, files_info_dict, unique
     return file_post_dict
 
 
-def modify_current_file(file_post_dict, dl_list, cmd):
+def modify_current_file(file_post_dict, dl_list, cmd, use_orig_filename=False):
     # sanitize filename for windows, src: https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string by wallyck
     # if after for..in is part of comprehension syntax <-> if..else b4 for..in is pythons equivalent of ternary operator
     # only keep chars if theyre alphanumerical (a-zA-Z0-9) or in the tuple (' ', '_'), replace rest with _
     # reset file name to 4ch name when reset_filename is copied
     cmd = cmd.strip()
     if cmd == "reset_filename":
-        file_post_dict["file_info"]["dl_filename"] = file_post_dict['file_info']['file_name_4ch']
-        print("Filename has been reset to ", file_post_dict['file_info']['file_name_4ch'])
+        if use_orig_filename:
+            file_post_dict["file_info"]["dl_filename"] = (
+                f"{file_post_dict['file_info']['file_name_4ch']}_"
+                f"{file_post_dict['file_info']['file_name_orig']}")
+        else:
+            file_post_dict["file_info"]["dl_filename"] = (
+                    file_post_dict['file_info']['file_name_4ch'])
+        print("Filename has been reset to ", file_post_dict['file_info']['dl_filename'])
+    elif cmd == "reset_to_4ch_fn":
+        file_post_dict["file_info"]["dl_filename"] = (
+                file_post_dict['file_info']['file_name_4ch'])
+        print("Filename has been reset to ", file_post_dict['file_info']['dl_filename'])
     elif cmd == "add_anyway":
         file_post_dict["file_info"]["to_download"] = True
         logger.info("File \"%s\" WAS added to download_list even though it wasnt unique!",
