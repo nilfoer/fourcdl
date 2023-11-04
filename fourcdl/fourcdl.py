@@ -363,6 +363,10 @@ def watch_clip_for_4ch_threads(files_info_dict, root_dir):
                         "Program state has been saved, start script with option resume "
                         "to continue with old state!"
                         ).with_traceback(e.__traceback__)
+            else:
+                # backup after every thread
+                export_state_from_dict(
+                    {"dl_multiple_threads": (to_dl, [])}, os.path.join(root_dir, "auto-backup.json"))
 
     # write state before downloading as safety measure against running into a dead lock
     # due to a threaded dl worker crashing or a user hitting Ctrl-C twice and interrupting
